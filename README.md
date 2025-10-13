@@ -87,7 +87,7 @@ Johnny Nguyen, <br>
 &ensp;&ensp;&ensp;&ensp; 
     California State University, Fullerton<br>
 &ensp;&ensp;&ensp;&ensp;  
-    email@csu.fullerton.edu<br>
+    johnnynguyenha@csu.fullerton.edu<br>
 
 &ensp;&ensp;&ensp;&ensp; 
 Emily Vu, <br>
@@ -96,7 +96,7 @@ Emily Vu, <br>
 &ensp;&ensp;&ensp;&ensp; 
     California State University, Fullerton<br>
 &ensp;&ensp;&ensp;&ensp;  
-    email@csu.fullerton.edu<br>
+    emilyvu@csu.fullerton.edu<br>
 
 
 
