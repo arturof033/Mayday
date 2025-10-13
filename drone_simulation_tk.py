@@ -40,10 +40,10 @@ def animate_drone(start, end, steps=30):
 # gui setup
 def main():
     root = tk.Tk()
-    root.title("🚁 Mayday Drone Simulation")
+    root.title("Mayday Drone Simulation")
     root.geometry("300x200")
 
-    start = [34.05, -118.25]
+    start = [33.8823, -117.8851]
     end = [34.10, -118.15]
 
     def start_sim():
