@@ -79,6 +79,8 @@ Arturo Flores, <br>
     California State University, Fullerton<br>
 &ensp;&ensp;&ensp;&ensp;  
     arturof033@csu.fullerton.edu<br>
+    
+&ensp;&ensp;&ensp;&ensp; 
 Johnny Nguyen, <br>
 &ensp;&ensp;&ensp;&ensp; 
     Department of Computer Science <br>
@@ -86,6 +88,8 @@ Johnny Nguyen, <br>
     California State University, Fullerton<br>
 &ensp;&ensp;&ensp;&ensp;  
     email@csu.fullerton.edu<br>
+
+&ensp;&ensp;&ensp;&ensp; 
 Emily Vu, <br>
 &ensp;&ensp;&ensp;&ensp; 
     Department of Computer Science <br>
@@ -99,8 +103,8 @@ Emily Vu, <br>
 
 ## Top Contributors
 
-<a href="https://github.com/arturof033/Maday/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=arturof033/Maday" />
+<a href="https://github.com/arturof033/Mayday/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=arturof033/Mayday" />
 </a>
 
 <!-- MARKDOWN LINKS & IMAGES -->
