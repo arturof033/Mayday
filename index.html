@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mayday • UI Prototype</title>
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --card: #111827; /* gray-900 */
+      --text: #e5e7eb; /* gray-200 */
+      --muted: #9ca3af; /* gray-400 */
+      --accent: #22c55e; /* green-500 */
+      --warn: #f43f5e; /* rose-500 */
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg); color: var(--text);
+      display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh;
+    }
+    header, footer { padding: 14px 18px; }
+    header {
+      display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #1f2937; /* gray-800 */
+    }
+    header img { height: 36px; width: 36px; border-radius: 8px; }
+    header h1 { font-size: 18px; margin: 0; }
+
+    .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px; }
+    @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--card); border: 1px solid #1f2937; border-radius: 14px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .panel h2 { font-size: 16px; margin: 0 0 10px 0; color: var(--text); }
+    label { display: block; font-size: 12px; color: var(--muted); margin-top: 8px; }
+    input[type="number"], select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #374151; background: #0b1220; color: var(--text); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    button { cursor: pointer; border: none; border-radius: 12px; padding: 10px 12px; font-weight: 600; }
+    .btn {
+      background: #1f2937; color: var(--text); border: 1px solid #334155;
+    }
+    .btn.primary { background: var(--accent); color: #0b1220; border-color: transparent; }
+    .btn.ghost { background: transparent; border: 1px dashed #334155; }
+
+    .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+    #map { height: 60vh; border-radius: 14px; border: 1px solid #1f2937; }
+
+    .status {
+      margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid #334155; background: #0b1220; font-size: 14px;
+    }
+    .status.success { border-color: #14532d; background: #052e16; color: #bbf7d0; }
+    .status.fail { border-color: #7f1d1d; background: #450a0a; color: #fecaca; }
+    .status.info { color: #93c5fd; border-color: #1e3a8a; background: #0b1220; }
+
+    footer { font-size: 12px; color: var(--muted); border-top: 1px solid #1f2937; }
+    code { background: #0b1220; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img alt="Mayday logo" src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png" />
+    <div>
+      <h1>Mayday • Drone Delivery UI </h1>
+      <div class="note">Click the map to pick <strong>Start</strong> then <strong>End</strong>. Fill in the numbers and press <strong>Check Mission</strong>.</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel" id="controls">
+      <h2>Mission Inputs</h2>
+      <label>Drone Payload Weight (kg)
+        <input id="inpWeight" type="number" min="0" step="0.1" value="1.5" />
+      </label>
+      <label>Battery Health / Charge (%)
+        <input id="inpBattery" type="number" min="0" max="100" step="1" value="80" />
+      </label>
+      <label>Wind Speed (m/s)
+        <input id="inpWind" type="number" min="0" step="0.1" value="5" />
+      </label>
+      <label>Delivery Urgency
+        <select id="inpUrgency">
+          <option>Low</option>
+          <option selected>Medium</option>
+          <option>High</option>
+        </select>
+      </label>
+
+      <div class="row" style="margin-top:12px;">
+        <button class="btn" id="btnReset">Reset Points</button>
+        <button class="btn primary" id="btnCheck">Check Mission</button>
+      </div>
+
+      <div class="note">Distance (straight line): <span id="distance">—</span> km</div>
+      <div class="note">Start: <span id="startText">—</span></div>
+      <div class="note">End: <span id="endText">—</span></div>
+
+      <div id="status" class="status info">Pick two points on the map to set a route.</div>
+    </section>
+
+    <section class="panel">
+      <div id="map"></div>
+      <div class="note">Data source: OpenStreetMap contributors • Map via Leaflet.
+        This demo draws a straight line for simplicity. For real routing, plug into a routing API later.
+      </div>
+    </section>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script>
+    // Map setup (Orange County area by default)
+    const map = L.map('map').setView([33.68, -117.82], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // State
+    let start = null, end = null;
+    let startMarker = null, endMarker = null;
+    let pathLine = null;
+
+    const $ = (id) => document.getElementById(id);
+    const distanceEl = $('distance');
+    const startText = $('startText');
+    const endText = $('endText');
+    const statusEl = $('status');
+
+    // Haversine distance (km)
+    function haversine(lat1, lon1, lat2, lon2) {
+      const toRad = (d) => d * Math.PI / 180;
+      const R = 6371; // km
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function updatePath() {
+      if (!start || !end) return;
+      const coords = [start, end];
+      const distKm = haversine(start.lat, start.lng, end.lat, end.lng);
+      distanceEl.textContent = distKm.toFixed(2);
+
+      if (pathLine) pathLine.remove();
+      pathLine = L.polyline(coords, { color: '#60a5fa', weight: 4 }).addTo(map);
+      map.fitBounds(L.latLngBounds(coords), { padding: [20, 20] });
+    }
+
+    function setStatus(kind, msg) {
+      statusEl.className = 'status ' + (kind || 'info');
+      statusEl.textContent = msg;
+    }
+
+    map.on('click', (e) => {
+      if (!start) {
+        start = e.latlng;
+        if (startMarker) startMarker.remove();
+        startMarker = L.marker(start, {title: 'Start'}).addTo(map).bindPopup('Start').openPopup();
+        startText.textContent = `${start.lat.toFixed(5)}, ${start.lng.toFixed(5)}`;
+        setStatus('info', 'Start set. Click again to set End.');
+      } else if (!end) {
+        end = e.latlng;
+        if (endMarker) endMarker.remove();
+        endMarker = L.marker(end, {title: 'End'}).addTo(map).bindPopup('End').openPopup();
+        endText.textContent = `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}`;
+        updatePath();
+        setStatus('info', 'Route set. Fill inputs and click Check Mission.');
+      } else {
+        // If both set, replace End for convenience
+        end = e.latlng;
+        if (endMarker) endMarker.remove();
+        endMarker = L.marker(end, {title: 'End'}).addTo(map).bindPopup('End').openPopup();
+        endText.textContent = `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}`;
+        updatePath();
+      }
+    });
+
+    $('btnReset').addEventListener('click', () => {
+      start = end = null;
+      if (startMarker) startMarker.remove();
+      if (endMarker) endMarker.remove();
+      if (pathLine) pathLine.remove();
+      distanceEl.textContent = '—';
+      startText.textContent = '—';
+      endText.textContent = '—';
+      setStatus('info', 'Pick two points on the map to set a route.');
+    });
+
+    // This is a toy model to mirror the report’s idea: battery + wind + weight + distance.
+    // RequiredEnergy = base * distanceKm * (1 + wind/20) * (1 + weight/10)
+    // AvailableEnergy = (battery% / 100) * capacityUnits (assume 120 units)
+    function checkMission() {
+      if (!start || !end) {
+        setStatus('fail', 'Please pick Start and End by clicking the map.');
+        return;
+      }
+      const weight = Number($('inpWeight').value || 0);
+      const battery = Number($('inpBattery').value || 0);
+      const wind = Number($('inpWind').value || 0);
+      const urgency = $('inpUrgency').value; // not used yet — could adjust thresholds
+
+      const distKm = Number(distanceEl.textContent.replace('—','0')) || 0;
+
+      const basePerKm = 9.5; // toy constant
+      const windFactor = 1 + (wind / 20);
+      const weightFactor = 1 + (weight / 10);
+      const required = basePerKm * distKm * windFactor * weightFactor;
+
+      const capacityUnits = 120; // pretend full battery energy units
+      const available = (battery / 100) * capacityUnits;
+
+      const ok = available >= required;
+
+      if (pathLine) {
+        pathLine.setStyle({ color: ok ? '#22c55e' : '#f43f5e', weight: 5 });
+      }
+
+      const msg = ok
+        ? 'Conditions for delivery are ideal. Delivery was successful.'
+        : 'Conditions for delivery are not ideal. Delivery was unsuccessful.';
+      setStatus(ok ? 'success' : 'fail', `${msg} (Required: ${required.toFixed(1)} u, Available: ${available.toFixed(1)} u)`);
+    }
+
+    $('btnCheck').addEventListener('click', checkMission);
+  </script>
+</body>
+</html>
