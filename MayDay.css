@@ -1,0 +1,6 @@
+.mayday.light { background:#f8fafc; color:#0f172a; }
+.mayday.dark  { background:#0b1220; color:#e2e8f0; }
+.mayday .soft { color:#64748b; }
+.mayday.dark .soft { color:#94a3b8; }
+.mayday .panel { background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:12px; }
+.mayday.dark .panel { background:rgba(2,6,23,0.6); border:1px solid #1f2937; }
