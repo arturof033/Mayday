@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -78,20 +78,55 @@ export default function MaydayUI() {
 
   const [useMiles, setUseMiles] = useState(false);
   const [theme, setTheme] = useState("dark");
-  const [placeMode, setPlaceMode] = useState("none"); // "start" | "waypoint" | "end" | "none"
+  const [placeMode, setPlaceMode] = useState("none");
   const [allowScrollZoom, setAllowScrollZoom] = useState(false);
+  const [calculatedPath, setCalculatedPath] = useState(null);
+  const [pathLoading, setPathLoading] = useState(false);
+  const [pathDistance, setPathDistance] = useState(null);
 
   const mapRef = useRef(null);
 
+  useEffect(() => {
+    if (start && end && waypoints.length === 0) {
+      setPathLoading(true);
+      fetch(`http://127.0.0.1:5000/api/path?start_lat=${start.lat}&start_lng=${start.lng}&end_lat=${end.lat}&end_lng=${end.lng}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.path && data.path.length > 0) {
+            setCalculatedPath(data.path.map(p => ({ lat: p[0], lng: p[1] })));
+            if (data.distance_km) {
+              setPathDistance(data.distance_km);
+            }
+          }
+          setPathLoading(false);
+        })
+        .catch(err => {
+          console.error("Pathfinding error:", err);
+          setCalculatedPath(null);
+          setPathDistance(null);
+          setPathLoading(false);
+        });
+    } else {
+      setCalculatedPath(null);
+      setPathDistance(null);
+    }
+  }, [start, end, waypoints.length]);
+
   const path = useMemo(() => {
+    if (calculatedPath && waypoints.length === 0) {
+      return calculatedPath;
+    }
     const pts = [];
     if (start) pts.push(start);
     for (const w of waypoints) pts.push(w);
     if (end) pts.push(end);
     return pts;
-  }, [start, waypoints, end]);
+  }, [start, waypoints, end, calculatedPath]);
 
-  const distanceKm = useMemo(() => (path.length >= 2 ? totalDistanceKm(path) : 0), [path]);
+  const distanceKm = useMemo(() => {
+    if (pathDistance !== null) return pathDistance;
+    return path.length >= 2 ? totalDistanceKm(path) : 0;
+  }, [path, pathDistance]);
   const distanceDisplay = useMemo(() => {
     return useMiles
       ? { value: distanceKm * 0.621371, unit: "mi" }
@@ -280,6 +315,7 @@ export default function MaydayUI() {
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Status</h2>
           <div className={`rounded-2xl ${panel} border p-3 text-sm`}>
+            {pathLoading && <p className="text-xs text-slate-400 mb-2">Calculating optimal path...</p>}
             <p>Distance: <span className="font-semibold">{distanceDisplay.value.toFixed(2)} {distanceDisplay.unit}</span></p>
             <p>ETA: <span className="font-semibold">{etaMinutes > 0 ? `${etaMinutes.toFixed(1)} min` : "--"}</span></p>
             {lastEval ? (
@@ -339,9 +375,9 @@ export default function MaydayUI() {
         <MapContainer
          center={[defaultCenter.lat, defaultCenter.lng]}
           zoom={11}
-          style={{ height: "70vh", width: "100%" }}   // optional: shorter map so content stays visible
-          scrollWheelZoom={false}                      // ⟵ disable wheel zoom
-          touchZoom={false}                            // ⟵ optional: disable trackpad/pinch zoom
+          style={{ height: "70vh", width: "100%" }}   // shorter map so content stays visible
+          scrollWheelZoom={false}                      
+          touchZoom={false}                            
           whenCreated={(map) => { mapRef.current = map; }}
           className="z-0"
         >

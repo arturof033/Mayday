@@ -117,152 +117,6 @@ def get_osm_obstacles(start, end, buffer=0.05):
         print(f"Error fetching obstacles: {e}")
         return []
 
-# fast pathfinding algorithm for drone (greedy with obstacle avoidance)
-def find_optimal_drone_path(start, end, obstacles):
-    """
-    Fast greedy pathfinding that navigates around obstacles when encountered
-    """
-    print("Calculating optimal drone path...")
-    
-    # filter only major obstacles (airports, military, large buildings)
-    major_obstacles = [obs for obs in obstacles if obs.get('radius', 0) > 0.005]
-    print(f"Focusing on {len(major_obstacles)} major obstacles")
-    
-    if not major_obstacles:
-        return [start, end], []
-    
-    path = [start]
-    avoided_obstacles = []  # track which obstacles were avoided
-    recently_avoided = set()  # track recently avoided obstacles to prevent going back and forth
-    current = np.array(start)
-    goal = np.array(end)
-    max_iterations = 30
-    iteration = 0
-    stuck_counter = 0
-    last_positions = []
-    
-    while haversine_distance(current.tolist(), goal.tolist()) > 0.01 and iteration < max_iterations:
-        iteration += 1
-        
-        # check if stuck (going back and forth)
-        last_positions.append(current.tolist())
-        if len(last_positions) > 5:
-            last_positions.pop(0)
-            # if revisiting similar positions, increase step size
-            if len(last_positions) == 5:
-                recent_dists = [haversine_distance(last_positions[i], last_positions[i+1]) 
-                               for i in range(4)]
-                if max(recent_dists) < 0.005:  #very small movements
-                    stuck_counter += 1
-                else:
-                    stuck_counter = 0
-        
-        # calculate next step towards goal
-        direction = goal - current
-        # increase step size if stuck
-        step_size = min(0.03 if stuck_counter > 2 else 0.02, np.linalg.norm(direction))
-        
-        if np.linalg.norm(direction) > 0:
-            next_step = current + (direction / np.linalg.norm(direction)) * step_size
-        else:
-            break
-        
-        # check if this step would hit an obstacle
-        collision = False
-        closest_obstacle = None
-        min_clearance = float('inf')
-        
-        for obs in major_obstacles:
-            obs_id = tuple(obs['center'])
-            # skip if we just avoided this obstacle in last 3 iterations
-            if obs_id in recently_avoided:
-                continue
-                
-            obs_center = np.array(obs['center'])
-            obs_radius = obs['radius']
-            
-            # distance from next step to obstacle center (in degrees)
-            dist_to_obs_deg = np.linalg.norm(next_step - obs_center)
-            
-            # convert to km for proper comparison
-            dist_to_obs_km = dist_to_obs_deg * 111  # around 111 km per degree
-            
-            # reduced safety margin, only avoid when really close (80% of radius)
-            safety_margin_km = obs_radius * 111 * 0.8
-            
-            if dist_to_obs_km < safety_margin_km:
-                collision = True
-                if dist_to_obs_km < min_clearance:
-                    min_clearance = dist_to_obs_km
-                    closest_obstacle = obs
-        
-        if not collision:
-            # safe to proceed directly
-            current = next_step
-            path.append(current.tolist())
-            # clear recently avoided after moving safely
-            if len(path) % 3 == 0:
-                recently_avoided.clear()
-        else:
-            # navigate around the closest obstacle
-            obs_center = np.array(closest_obstacle['center'])
-            obs_radius = closest_obstacle['radius']
-            obs_id = tuple(closest_obstacle['center'])
-            
-            # mark this obstacle as avoided
-            if closest_obstacle not in avoided_obstacles:
-                avoided_obstacles.append(closest_obstacle)
-                print(f"  Avoiding: {closest_obstacle['type']}")
-            
-            recently_avoided.add(obs_id)
-            
-            # vector from current position to obstacle center
-            to_obs = obs_center - current
-            
-            # calculate tangent points (go around the side)
-            to_obs_norm = to_obs / np.linalg.norm(to_obs)
-            perpendicular = np.array([-to_obs_norm[1], to_obs_norm[0]])
-            
-            # calculate which side to go around (left or right)
-            # project goal direction onto perpendicular to decide
-            to_goal = goal - current
-            side_preference = np.dot(to_goal, perpendicular)
-            
-            # choose side based on which gets us closer to goal
-            if side_preference > 0:
-                tangent_direction = perpendicular
-            else:
-                tangent_direction = -perpendicular
-            
-            # move along tangent
-            # just barely clear the obstacle (110% of radius)
-            clearance_dist = obs_radius * 1.1
-            waypoint = obs_center + tangent_direction * clearance_dist
-            
-            # add intermediate waypoint
-            path.append(waypoint.tolist())
-            current = waypoint
-    
-    # make sure we end at the goal
-    if haversine_distance(path[-1], goal.tolist()) > 0.001:
-        path.append(goal.tolist())
-    
-    # smooth the path
-    if len(path) > 3:
-        smoothed = [path[0]]
-        for i in range(1, len(path) - 1):
-            # Average with neighbors for smoother curves
-            smoothed.append([
-                (path[i-1][0] + path[i][0] + path[i+1][0]) / 3,
-                (path[i-1][1] + path[i][1] + path[i+1][1]) / 3
-            ])
-        smoothed.append(path[-1])
-        path = smoothed
-    
-    print(f"Path calculated with {len(path)} waypoints")
-    print(f"Avoided {len(avoided_obstacles)} obstacles")
-    return path, avoided_obstacles
-
 ## alternate algorithm with more leniency on obstacles
 def find_optimal_drone_path2(start, end, obstacles):
     print("Calculating optimal drone path...")
@@ -459,23 +313,6 @@ def create_map_with_animation(start, end, route, obstacles, avoided_obstacles, f
 
     m.save(file_path)
 
-# animate drone flight along the optimal route
-def animate_drone(start, end, steps=50):
-    os.makedirs("assets", exist_ok=True)
-    file_path = os.path.abspath("assets/mayday_drone.html")
-
-    obstacles = get_osm_obstacles(start, end)
-    route, avoided_obstacles = find_optimal_drone_path(start, end, obstacles) if obstacles else ([start, end], [])
-
-    # interpolate route points for smoother animation
-    route = simulate_drone_on_path(route, steps)
-
-    print(f"Animating drone flight over {len(route)} steps...")
-    total_km = total_path_distance(route)
-    print(f"Total flight distance: {total_km:.2f} km")
-    create_map_with_animation(start, end, route, obstacles, avoided_obstacles, file_path)
-    webbrowser.open(f"file://{file_path}", new=2)
-
 
     # alternate animate drone flight along the optimal route
 def animate_drone2(start, end, steps=50):
@@ -504,22 +341,16 @@ def main():
     
     #start = [33.8823, -117.8851]  # CSUF
     #end = [34.10, -118.15]  # South Pasadena
-    start = [34.016, -118.491]  # Santa Monica (near beach)
-    end = [34.052, -118.243]    # Downtown LA
+    end = [34.016, -118.491]  # Santa Monica (near beach)
+    start = [34.052, -118.243]    # Downtown LA
     #start = [33.920, -118.450]  # West of LAX (Pacific coast)
     #end = [33.965, -118.370]    # East of LAX (Inglewood area)
 
-    
-    def start_sim():
-        status_label.config(text="Status: Finding optimal path...")
-        threading.Thread(target=lambda: run_sim(start, end), daemon=True).start()
+
     def start_sim2():
         status_label.config(text="Status: Finding optimal path...")
         threading.Thread(target=lambda: run_sim2(start, end), daemon=True).start()
-    
-    def run_sim(s, e):
-        animate_drone(s, e)
-        status_label.config(text="Status: Simulation complete!")
+
     def run_sim2(s, e):
         animate_drone2(s, e)
         status_label.config(text="Status: Simulation complete!")
@@ -530,15 +361,6 @@ def main():
     
     status_label = tk.Label(root, text="Status: Ready", font=("Arial", 9), fg="green")
     status_label.pack(pady=8)
-    
-    tk.Button(
-        root, 
-        text="Start Simulation", 
-        command=start_sim, 
-        width=20,
-        bg="#4CAF50",
-        font=("Arial", 10, "bold")
-    ).pack(pady=10)
 
     tk.Button(
         root, 

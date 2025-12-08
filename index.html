@@ -19,7 +19,7 @@
     defer
   ></script>
 
-  <!-- Chart.js for analytics -->
+  <!-- chart.js for analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 
   <style>
@@ -535,6 +535,21 @@
       color: #fee2e2;
     }
 
+    .status-banner.loading {
+      border-color: rgba(59, 130, 246, 0.8);
+      background: rgba(30, 58, 138, 0.6);
+      color: #dbeafe;
+    }
+
+    .status-dot.spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     .status-dot {
       width: 9px;
       height: 9px;
@@ -545,6 +560,12 @@
 
     .status-dot.danger {
       background: #ef4444;
+      box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.3);
+    }
+
+    .status-dot.spinning {
+      background: #3b82f6;
+      box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.3);
       box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.4);
     }
 
@@ -685,8 +706,9 @@
 
     /* Analytics */
     #analytics-chart {
-      width: 100%;
-      height: 220px;
+      width: 100% !important;
+      height: 220px !important;
+      max-height: 220px;
     }
 
     .analytics-legend {
@@ -898,12 +920,12 @@
                     <input id="battery-health" type="number" min="1" max="100" value="85" required />
                   </div>
                   <div class="field-group">
-                    <label for="wind-speed">Wind speed (km/h)</label>
-                    <input id="wind-speed" type="number" min="0" step="1" value="12" required />
+                    <label for="wind-speed">Wind speed (km/h) <span id="wind-auto-label" style="font-size: 0.75rem; color: var(--muted);">(auto)</span></label>
+                    <input id="wind-speed" type="number" min="0" step="1" value="12" required readonly style="opacity: 0.7; cursor: not-allowed; background-color: var(--bg-secondary);" />
                   </div>
                   <div class="field-group">
-                    <label for="wind-direction">Wind direction</label>
-                    <select id="wind-direction">
+                    <label for="wind-direction">Wind direction <span id="wind-dir-auto-label" style="font-size: 0.75rem; color: var(--muted);">(auto)</span></label>
+                    <select id="wind-direction" disabled style="opacity: 0.7; cursor: not-allowed; background-color: var(--bg-secondary);">
                       <option value="headwind">Headwind</option>
                       <option value="tailwind">Tailwind</option>
                       <option value="crosswind">Crosswind</option>
@@ -912,11 +934,15 @@
                   </div>
                 </div>
 
-                <div class="mission-submit-row">
+                <div class="mission-submit-row" style="display: flex; align-items: center; gap: 16px;">
                   <button type="submit" class="primary-btn">
                     Simulate mission
                     <span>▶</span>
                   </button>
+                  <label style="display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.9rem; cursor: pointer;">
+                    <input type="checkbox" id="manual-wind-toggle" style="margin: 0; width: auto;" />
+                    <span>Manual wind settings</span>
+                  </label>
                 </div>
               </form>
 
@@ -1046,7 +1072,9 @@
                 <p>High-level success vs failure counts.</p>
               </div>
             </div>
-            <canvas id="analytics-chart"></canvas>
+            <div style="height: 220px; width: 100%; position: relative;">
+              <canvas id="analytics-chart"></canvas>
+            </div>
             <div class="analytics-legend">
               <span>Total: <span id="analytics-total">0</span></span>
               <span>Success rate: <span id="analytics-success-rate">0%</span></span>
@@ -1146,6 +1174,9 @@
 
     let mapInstance = null;
     let routeLayer = null;
+    let startMarker = null;
+    let endMarker = null;
+    let currentPathRequest = null;
     let analyticsChart = null;
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -1399,7 +1430,7 @@
         return AppState.locations.find((loc) => loc.id === id);
       }
 
-      function drawRoute(start, end) {
+      function drawRoute(start, end, calculatedPath = null) {
         if (!mapInstance) return;
 
         const startLatLng = [start.lat, start.lng];
@@ -1407,13 +1438,34 @@
 
         if (routeLayer) {
           mapInstance.removeLayer(routeLayer);
+          routeLayer = null;
         }
 
-        routeLayer = L.polyline([startLatLng, endLatLng], { weight: 4 }).addTo(mapInstance);
-        mapInstance.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+        if (startMarker) {
+          mapInstance.removeLayer(startMarker);
+          startMarker = null;
+        }
 
-        L.circleMarker(startLatLng, { radius: 5 }).addTo(mapInstance);
-        L.circleMarker(endLatLng, { radius: 5 }).addTo(mapInstance);
+        if (endMarker) {
+          mapInstance.removeLayer(endMarker);
+          endMarker = null;
+        }
+
+        if (calculatedPath && calculatedPath.length > 0) {
+          const pathCoords = calculatedPath.map(p => [p[0], p[1]]);
+          routeLayer = L.polyline(pathCoords, { 
+            weight: 4, 
+            color: '#3b82f6',
+            smoothFactor: 1.0
+          }).addTo(mapInstance);
+          mapInstance.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+        } else {
+          routeLayer = L.polyline([startLatLng, endLatLng], { weight: 4, color: '#94a3b8' }).addTo(mapInstance);
+          mapInstance.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+        }
+
+        startMarker = L.circleMarker(startLatLng, { radius: 5, color: 'green' }).addTo(mapInstance);
+        endMarker = L.circleMarker(endLatLng, { radius: 5, color: 'red' }).addTo(mapInstance);
       }
 
       // ------------- MISSION SIM -------------
@@ -1436,52 +1488,182 @@
           return;
         }
 
-        const distance = haversine(start.lat, start.lng, end.lat, end.lng);
-        const { success, reason } = evaluateMission(
-          distance,
-          payload,
-          battery,
-          windSpeed,
-          windDirection
-        );
+        let distance = haversine(start.lat, start.lng, end.lat, end.lng);
 
-        // Show route
-        drawRoute(start, end);
-
-        // Post mission to backend
-        try {
-          const result = await apiRequest("/missions", {
-            method: "POST",
-            body: JSON.stringify({
-              start: start.name,
-              end: end.name,
-              distance_km: distance.toFixed(2),
-              payload_kg: payload,
-              battery,
-              wind_speed: windSpeed,
-              wind_direction: windDirection,
-              result: success ? "success" : "fail",
-            }),
-          });
-          AppState.missions.unshift(result);
-          renderMissionsTable();
-          updateAnalytics();
-        } catch (err) {
-          console.error(err);
+        const manualWindToggle = document.getElementById("manual-wind-toggle");
+        const useWeatherAPI = !manualWindToggle.checked;
+        
+        if (useWeatherAPI) {
+          showMissionStatus("Calculating optimal path and fetching weather data...", null, true);
+          
+          // Reset wind fields to show they're being calculated
+          const windSpeedInput = document.getElementById("wind-speed");
+          const windDirectionSelect = document.getElementById("wind-direction");
+          windSpeedInput.value = "12";
+          windSpeedInput.style.opacity = "0.5";
+          windDirectionSelect.value = "calm";
+          windDirectionSelect.style.opacity = "0.5";
+        } else {
+          showMissionStatus("Calculating optimal path...", null, true);
         }
+        
+        drawRoute(start, end);
+        
+        if (currentPathRequest) {
+          currentPathRequest.abort();
+        }
+        
+        const controller = new AbortController();
+        currentPathRequest = controller;
+        
+        fetch(`${API_BASE}/path?start_lat=${start.lat}&start_lng=${start.lng}&end_lat=${end.lat}&end_lng=${end.lng}&use_weather=${useWeatherAPI}`, {
+          signal: controller.signal
+        })
+          .then(async res => {
+            const pathData = await res.json();
+            if (!res.ok) {
+              throw new Error(pathData.error || 'Failed to calculate path');
+            }
+            return pathData;
+          })
+          .then(async pathData => {
+            if (currentPathRequest === controller) {
+              // check if API failed
+              if (pathData.api_failed || pathData.error) {
+                const errorMsg = pathData.error || 'Failed to fetch obstacle data from API';
+                showMissionStatus(`⚠ ${errorMsg}. Using direct path (obstacles not avoided).`, false, false);
+                if (pathData.path) {
+                  drawRoute(start, end, pathData.path);
+                  distance = pathData.distance_km || haversine(start.lat, start.lng, end.lat, end.lng);
+                } else {
+                  drawRoute(start, end);
+                  distance = haversine(start.lat, start.lng, end.lat, end.lng);
+                }
+                currentPathRequest = null;
+                return;
+              }
+              
+              // update wind fields automatically from API response only if not in manual mode
+              const manualWindToggle = document.getElementById("manual-wind-toggle");
+              if (!manualWindToggle.checked) {
+                const windSpeedInput = document.getElementById("wind-speed");
+                const windDirectionSelect = document.getElementById("wind-direction");
+                
+                if (pathData.wind_speed !== undefined && pathData.wind_speed !== null) {
+                  windSpeedInput.value = pathData.wind_speed;
+                  windSpeedInput.style.opacity = "1"; // make visible when populated
+                }
+                
+                if (pathData.wind_direction !== undefined && pathData.wind_direction !== null) {
+                  windDirectionSelect.value = pathData.wind_direction;
+                  windDirectionSelect.style.opacity = "1"; // make visible when populated
+                }
+              }
+              
+              // read updated wind values for mission evaluation
+              const windSpeed = parseFloat(document.getElementById("wind-speed").value);
+              const windDirection = document.getElementById("wind-direction").value;
+              
+              if (pathData.distance_km) {
+                distance = pathData.distance_km;
+              }
+              drawRoute(start, end, pathData.path);
+              
+              const { success, reason } = evaluateMission(
+                distance,
+                payload,
+                battery,
+                windSpeed,
+                windDirection
+              );
+              
+              const text = success
+                ? `✓ Mission feasible: ${distance.toFixed(1)} km route calculated. ${reason}`
+                : `✗ Mission not recommended: ${distance.toFixed(1)} km route calculated. ${reason}`;
+              showMissionStatus(text, success, false);
+              
+              try {
+                const result = await apiRequest("/missions", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    start: start.name,
+                    end: end.name,
+                    distance_km: distance.toFixed(2),
+                    payload_kg: payload,
+                    battery,
+                    wind_speed: windSpeed,
+                    wind_direction: windDirection,
+                    result: success ? "success" : "fail",
+                  }),
+                });
+                AppState.missions.unshift(result);
+                renderMissionsTable();
+                updateAnalytics();
+              } catch (err) {
+                console.error("Failed to save mission (auth required):", err);
+              }
+              
+              currentPathRequest = null;
+            }
+          })
+          .catch(async error => {
+            if (error.name !== 'AbortError') {
+              console.error("Pathfinding error:", error);
+              const errorMsg = error.message || 'Failed to calculate path';
+              showMissionStatus(`⚠ ${errorMsg}. Using direct path (obstacles not avoided).`, false, false);
+              distance = haversine(start.lat, start.lng, end.lat, end.lng);
+              drawRoute(start, end);
+              
+              const { success, reason } = evaluateMission(
+                distance,
+                payload,
+                battery,
+                windSpeed,
+                windDirection
+              );
+              const text = success
+                ? `✓ Mission feasible: ${distance.toFixed(1)} km (straight-line). ${reason}`
+                : `✗ Mission not recommended: ${distance.toFixed(1)} km (straight-line). ${reason}`;
+              showMissionStatus(text, success, false);
+              
+              try {
+                const result = await apiRequest("/missions", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    start: start.name,
+                    end: end.name,
+                    distance_km: distance.toFixed(2),
+                    payload_kg: payload,
+                    battery,
+                    wind_speed: windSpeed,
+                    wind_direction: windDirection,
+                    result: success ? "success" : "fail",
+                  }),
+                });
+                AppState.missions.unshift(result);
+                renderMissionsTable();
+                updateAnalytics();
+              } catch (err) {
+                console.error("Failed to save mission (auth required):", err);
+              }
+            }
+            if (currentPathRequest === controller) {
+              currentPathRequest = null;
+            }
+          });
 
-        const text = success
-          ? `OK: approx ${distance.toFixed(1)} km, safe margin detected. ${reason}`
-          : `Not recommended: approx ${distance.toFixed(1)} km, risk too high. ${reason}`;
-        showMissionStatus(text, success);
       });
 
-      function showMissionStatus(text, success) {
+      function showMissionStatus(text, success, isLoading = false) {
         missionStatusEl.style.display = "flex";
         missionStatusTextEl.textContent = text;
-        missionStatusEl.classList.remove("negative");
-        missionStatusEl.querySelector(".status-dot").classList.remove("danger");
-        if (!success) {
+        missionStatusEl.classList.remove("negative", "loading");
+        missionStatusEl.querySelector(".status-dot").classList.remove("danger", "spinning");
+        
+        if (isLoading) {
+          missionStatusEl.classList.add("loading");
+          missionStatusEl.querySelector(".status-dot").classList.add("spinning");
+        } else if (success === false) {
           missionStatusEl.classList.add("negative");
           missionStatusEl.querySelector(".status-dot").classList.add("danger");
         }
@@ -1675,6 +1857,46 @@
         AppState.settings.strictWind = settingStrictWind.checked;
       });
 
+      // Manual wind toggle
+      const manualWindToggle = document.getElementById("manual-wind-toggle");
+      const windSpeedInput = document.getElementById("wind-speed");
+      const windDirectionSelect = document.getElementById("wind-direction");
+      const windAutoLabel = document.getElementById("wind-auto-label");
+      const windDirAutoLabel = document.getElementById("wind-dir-auto-label");
+
+      function updateWindFieldsState() {
+        const isManual = manualWindToggle.checked;
+        
+        if (isManual) {
+          // manual mode: enable fields
+          windSpeedInput.removeAttribute("readonly");
+          windSpeedInput.style.opacity = "1";
+          windSpeedInput.style.cursor = "text";
+          windSpeedInput.style.backgroundColor = "";
+          windDirectionSelect.disabled = false;
+          windDirectionSelect.style.opacity = "1";
+          windDirectionSelect.style.cursor = "pointer";
+          windDirectionSelect.style.backgroundColor = "";
+          windAutoLabel.textContent = "";
+          windDirAutoLabel.textContent = "";
+        } else {
+          // auto mode: disable fields
+          windSpeedInput.setAttribute("readonly", "readonly");
+          windSpeedInput.style.opacity = "0.7";
+          windSpeedInput.style.cursor = "not-allowed";
+          windSpeedInput.style.backgroundColor = "var(--bg-secondary)";
+          windDirectionSelect.disabled = true;
+          windDirectionSelect.style.opacity = "0.7";
+          windDirectionSelect.style.cursor = "not-allowed";
+          windDirectionSelect.style.backgroundColor = "var(--bg-secondary)";
+          windAutoLabel.textContent = "(auto)";
+          windDirAutoLabel.textContent = "(auto)";
+        }
+      }
+
+      manualWindToggle.addEventListener("change", updateWindFieldsState);
+      updateWindFieldsState(); // initialize state
+
       // ------------- ANALYTICS -------------
 
       function initializeAnalyticsChart() {
@@ -1689,6 +1911,7 @@
               {
                 label: "Missions",
                 data: [0, 0],
+                base: 0
               },
             ],
           },
@@ -1696,6 +1919,21 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
+            animation: {
+              x: {
+                duration: 0,
+                from: NaN
+              },
+              y: {
+                from: 0
+              },
+              width: {
+                duration: 0
+              },
+              height: {
+                from: 0
+              }
+            },
             scales: {
               x: {
                 ticks: { color: "#9ca3af", font: { size: 11 } },
@@ -1721,7 +1959,10 @@
 
         if (analyticsChart) {
           analyticsChart.data.datasets[0].data = [successCount, failCount];
-          analyticsChart.update();
+          analyticsChart.update({
+            duration: 800,
+            easing: 'easeOutQuart'
+          });
         }
       }
     });

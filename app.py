@@ -1,8 +1,418 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import numpy as np
+import requests
+import os
+from math import radians, cos, sin, sqrt, atan2
 
 app = Flask(__name__)
-CORS(app)  # allow front-end calls from file:// or localhost
+
+CORS(app, 
+     origins="*",
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"],
+     supports_credentials=False)
+
+def haversine_distance(coord1, coord2):
+    R = 6371
+    lat1, lon1 = radians(coord1[0]), radians(coord1[1])
+    lat2, lon2 = radians(coord2[0]), radians(coord2[1])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+def get_weather_for_path(path):
+    """Fetch weather data for the path and calculate average wind speed and direction relative to path"""
+    if not path or len(path) < 2:
+        return {"wind_speed": 12, "wind_direction": "calm"}
+    
+    # get weather for midpoint of path
+    mid_idx = len(path) // 2
+    lat = path[mid_idx][0]
+    lon = path[mid_idx][1]
+    
+    # calculate path direction (bearing from start to end)
+    start = path[0]
+    end = path[-1]
+    
+    # convert lat/lon to radians
+    lat1_rad = radians(start[0])
+    lat2_rad = radians(end[0])
+    dlon = radians(end[1] - start[1])
+    
+    # calculate bearing (direction of travel)
+    y = sin(dlon) * cos(lat2_rad)
+    x = cos(lat1_rad) * sin(lat2_rad) - sin(lat1_rad) * cos(lat2_rad) * cos(dlon)
+    path_bearing = (atan2(y, x) * 180 / 3.14159265359 + 360) % 360
+    
+    try:
+        api_key = "333b93885e9d224a90c1e0e7e1630e75"
+        if api_key:
+            weather_url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+            response = requests.get(weather_url, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                wind_data = data.get('wind', {})
+                wind_speed_ms = wind_data.get('speed', 0)  # m/s
+                wind_deg = wind_data.get('deg', None)  # degrees
+                
+                # convert m/s to km/h
+                wind_speed_kmh = wind_speed_ms * 3.6
+                
+                # calculate relative wind direction if we have wind direction data
+                if wind_deg is not None:
+                    wind_relative = (wind_deg - path_bearing + 360) % 360
+                    
+                    if wind_speed_kmh < 5:
+                        direction = "calm"
+                    elif 315 <= wind_relative or wind_relative < 45:
+                        direction = "headwind"
+                    elif 135 <= wind_relative < 225:
+                        direction = "tailwind"
+                    else:
+                        direction = "crosswind"
+                else:
+                    # no wind direction data
+                    if wind_speed_kmh < 5:
+                        direction = "calm"
+                    else:
+                        direction = "crosswind"
+                
+                print(f"Weather fetched: speed={wind_speed_kmh:.1f} km/h, direction={direction}, deg={wind_deg}")
+                return {
+                    "wind_speed": round(wind_speed_kmh),
+                    "wind_direction": direction
+                }
+            else:
+                print(f"Weather API returned status {response.status_code}: {response.text[:200]}")
+    except Exception as e:
+        print(f"Error fetching weather: {e}")
+        import traceback
+        print(traceback.format_exc())
+    
+    # Fallback: return default values
+    return {"wind_speed": 12, "wind_direction": "calm"}
+
+def get_osm_obstacles(start, end, buffer=0.05):
+    min_lat = min(start[0], end[0]) - buffer
+    max_lat = max(start[0], end[0]) + buffer
+    min_lon = min(start[1], end[1]) - buffer
+    max_lon = max(start[1], end[1]) + buffer
+    
+    overpass_url = "http://overpass-api.de/api/interpreter"
+    
+    query = f"""
+    [out:json][timeout:30];
+    (
+      way["building"="yes"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["building"="commercial"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["building"="industrial"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["aeroway"="aerodrome"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["aeroway"="runway"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["landuse"="military"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["man_made"="tower"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["man_made"="tower"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["aeroway"="aerodrome"]({min_lat},{min_lon},{max_lat},{max_lon});
+    );
+    out geom;
+    """
+    
+    # retry logic for API calls
+    max_retries = 3
+    import time
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(overpass_url, data=query, timeout=25)
+            if response.status_code == 200:
+                data = response.json()
+                obstacles = []
+                
+                for element in data.get('elements', []):
+                    if element['type'] == 'way' and 'geometry' in element:
+                        coords = [[node['lat'], node['lon']] for node in element['geometry']]
+                        if coords:
+                            center_lat = sum(c[0] for c in coords) / len(coords)
+                            center_lon = sum(c[1] for c in coords) / len(coords)
+                            size = 0.008
+                            if 'tags' in element:
+                                tags = element['tags']
+                                if tags.get('aeroway') in ['aerodrome', 'runway']:
+                                    size = 0.03
+                                elif tags.get('landuse') == 'military':
+                                    size = 0.02
+                                elif tags.get('building') in ['commercial', 'retail', 'mall']:
+                                    size = 0.01
+                                elif tags.get('building') == 'industrial':
+                                    size = 0.008
+                            
+                            obstacle_type = tags.get('aeroway') or tags.get('landuse') or tags.get('building', 'obstacle')
+                            obstacles.append({
+                                'center': [center_lat, center_lon],
+                                'type': obstacle_type,
+                                'coords': coords,
+                                'radius': size
+                            })
+                    elif element['type'] == 'node':
+                        tags = element.get('tags', {})
+                        size = 0.03 if tags.get('aeroway') == 'aerodrome' else 0.008
+                        obstacle_type = tags.get('aeroway') or tags.get('man_made') or 'tower'
+                        obstacles.append({
+                            'center': [element['lat'], element['lon']],
+                            'type': obstacle_type,
+                            'coords': [[element['lat'], element['lon']]],
+                            'radius': size
+                        })
+                
+                return obstacles, None
+            elif response.status_code == 504:
+                last_error = f"API timeout (504) - server is overloaded"
+                if attempt < max_retries - 1:
+                    print(f"Overpass API timeout (504), retrying... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(2 * (attempt + 1))  # exponential backoff
+                    continue
+            elif response.status_code == 429:
+                last_error = f"API rate limit exceeded (429)"
+                if attempt < max_retries - 1:
+                    print(f"Overpass API rate limited (429), retrying... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(5 * (attempt + 1))  # longer wait for rate limits
+                    continue
+            else:
+                last_error = f"API returned status {response.status_code}"
+                if attempt < max_retries - 1:
+                    print(f"Overpass API returned status {response.status_code}, retrying... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(2)
+                    continue
+        except requests.exceptions.Timeout:
+            last_error = "Request timeout - API took too long to respond"
+            if attempt < max_retries - 1:
+                print(f"Request timeout, retrying... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(2 * (attempt + 1))
+                continue
+        except requests.exceptions.ConnectionError:
+            last_error = "Connection error - could not reach API server"
+            if attempt < max_retries - 1:
+                print(f"Connection error, retrying... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(2 * (attempt + 1))
+                continue
+        except Exception as e:
+            last_error = f"Error: {str(e)}"
+            if attempt < max_retries - 1:
+                print(f"Error fetching obstacles (attempt {attempt + 1}/{max_retries}): {e}, retrying...")
+                time.sleep(2 * (attempt + 1))
+                continue
+    
+    # all retries failed
+    error_msg = f"Failed to fetch obstacle data after {max_retries} attempts. {last_error}"
+    print(error_msg)
+    return [], error_msg
+
+def find_optimal_drone_path(start, end, obstacles):
+    # filter major obstacles first
+    major_obstacles = [
+        obs for obs in obstacles 
+        if obs['type'] in ['aerodrome', 'runway', 'military', 'tower']
+    ]
+    
+    # if too many obstacles, prioritize ones closest to the flight path
+    if len(major_obstacles) > 100:
+        start_np = np.array(start)
+        end_np = np.array(end)
+        
+        # calculate distance from each obstacle to the direct line between start/end
+        def distance_to_path(obs):
+            obs_pos = np.array(obs['center'])
+            path_vec = end_np - start_np
+            path_length = np.linalg.norm(path_vec)
+            
+            if path_length < 0.0001:
+                return np.linalg.norm(obs_pos - start_np)
+            
+            path_unit = path_vec / path_length
+            to_obs = obs_pos - start_np
+            projection = np.dot(to_obs, path_unit)
+            projection = max(0, min(path_length, projection))
+            closest_point = start_np + path_unit * projection
+            
+            return np.linalg.norm(obs_pos - closest_point)
+        
+        # sort by distance to path, keep closest 100
+        major_obstacles.sort(key=distance_to_path)
+        major_obstacles = major_obstacles[:100]
+    
+    # check if direct path is blocked
+    start_vec = np.array(start)
+    end_vec = np.array(end)
+    route_vec = end_vec - start_vec
+    route_length = np.linalg.norm(route_vec)
+    
+    if route_length == 0:
+        return [start, end], []
+    
+    route_unit = route_vec / route_length
+    
+    # check for obstacles blocking the direct path
+    blocking_obstacles = []
+    for obs in major_obstacles:
+        obs_center = np.array(obs['center'])
+        obs_radius = min(obs['radius'], 0.01)
+        to_obs = obs_center - start_vec
+        projection = np.dot(to_obs, route_vec) / (route_length * route_length)
+        projection = max(0, min(1, projection))
+        closest_point = start_vec + route_vec * projection
+        dist_to_route_km = np.linalg.norm(obs_center - closest_point) * 111
+        
+        # use larger detection threshold for airports to avoid them earlier
+        threshold_multiplier = 1.8 if obs['type'] in ['aerodrome', 'runway'] else 1.2
+        if dist_to_route_km < obs_radius * 111 * threshold_multiplier:
+            blocking_obstacles.append({
+                'obstacle': obs,
+                'projection': projection,
+                'distance': dist_to_route_km
+            })
+    
+    if not blocking_obstacles:
+        return [start, end], []
+    
+    blocking_obstacles.sort(key=lambda x: x['projection'])
+    
+    # helper function to check if a path segment intersects an obstacle
+    def segment_intersects_obstacle(seg_start, seg_end, obstacle):
+        seg_start_vec = np.array(seg_start)
+        seg_end_vec = np.array(seg_end)
+        seg_vec = seg_end_vec - seg_start_vec
+        seg_length = np.linalg.norm(seg_vec)
+        if seg_length == 0:
+            return False
+        
+        seg_unit = seg_vec / seg_length
+        obs_center = np.array(obstacle['center'])
+        obs_radius = min(obstacle['radius'], 0.01)
+        
+        to_obs = obs_center - seg_start_vec
+        projection = np.dot(to_obs, seg_unit)
+        projection = max(0, min(seg_length, projection))
+        closest_point = seg_start_vec + seg_unit * projection
+        dist_to_obs_km = np.linalg.norm(obs_center - closest_point) * 111
+        
+        threshold_multiplier = 1.8 if obstacle['type'] in ['aerodrome', 'runway'] else (1.5 if obstacle['type'] == 'military' else 1.2)
+        return dist_to_obs_km < obs_radius * 111 * threshold_multiplier
+    
+    path = [start]
+    avoided_obstacles = []
+    current_pos = np.array(start)
+    
+    for block in blocking_obstacles:
+        obs = block['obstacle']
+        obs_center = np.array(obs['center'])
+        obs_radius = min(obs['radius'], 0.01)
+        
+        # check if we already avoid this obstacle
+        if obs in avoided_obstacles:
+            continue
+        
+        # check if path from current position to end would intersect this obstacle
+        # OR if the obstacle is between current position and end (using projection)
+        to_obs_from_current = obs_center - current_pos
+        to_end_from_current = end_vec - current_pos
+        to_end_norm = np.linalg.norm(to_end_from_current)
+        
+        if to_end_norm > 0:
+            projection_on_path = np.dot(to_obs_from_current, to_end_from_current) / (to_end_norm * to_end_norm)
+            # obstacle is between current and end if projection is between 0 and 1
+            obstacle_in_path = 0 <= projection_on_path <= 1
+        else:
+            obstacle_in_path = False
+        
+        if not segment_intersects_obstacle(current_pos.tolist(), end, obs) and not obstacle_in_path:
+            continue
+        
+        # find the best waypoint to avoid this obstacle
+        projection = block['projection']
+        closest_point = start_vec + route_vec * projection
+        perp_vec = obs_center - closest_point
+        perp_norm = np.linalg.norm(perp_vec)
+        
+        if perp_norm > 0:
+            perp = perp_vec / perp_norm
+        else:
+            perp = np.array([-route_unit[1], route_unit[0]])
+        
+        # choose side that's closer to goal
+        goal_vec = end_vec - obs_center
+        perp_dot = np.dot(goal_vec, perp)
+        if perp_dot < 0:
+            perp = -perp
+        
+        # place waypoint at safe distance
+        if obs['type'] in ['aerodrome', 'runway']:
+            safe_distance = obs_radius * 4.0
+        elif obs['type'] == 'military':
+            safe_distance = obs_radius * 3.5
+        else:
+            safe_distance = obs_radius * 3.0
+        
+        waypoint = obs_center + perp * safe_distance
+        
+        # verify waypoint avoids this obstacle
+        if not segment_intersects_obstacle(current_pos.tolist(), waypoint.tolist(), obs) and \
+           not segment_intersects_obstacle(waypoint.tolist(), end, obs):
+            path.append(waypoint.tolist())
+            current_pos = waypoint
+            avoided_obstacles.append(obs)
+    
+    path.append(end)
+    
+    # final check: verify the path doesn't go through any obstacles
+    final_path = [path[0]]
+    for i in range(1, len(path)):
+        segment_start = final_path[-1]
+        segment_end = path[i]
+        
+        # check if this segment intersects any major obstacle
+        segment_has_obstacle = False
+        for obs in major_obstacles:
+            if segment_intersects_obstacle(segment_start, segment_end, obs):
+                segment_has_obstacle = True
+                break
+        
+        if not segment_has_obstacle:
+            final_path.append(segment_end)
+        else:
+            # need to add intermediate waypoint
+            mid_point = [(segment_start[0] + segment_end[0]) / 2, (segment_start[1] + segment_end[1]) / 2]
+            final_path.append(mid_point)
+            final_path.append(segment_end)
+    
+    return final_path, avoided_obstacles
+
+def simulate_drone_on_path(path, steps=50):
+    if len(path) < 2:
+        return path
+    
+    distances = [0]
+    for i in range(1, len(path)):
+        dist = np.linalg.norm(np.array(path[i]) - np.array(path[i-1]))
+        distances.append(distances[-1] + dist)
+    
+    total_distance = distances[-1]
+    
+    positions = []
+    for i in range(steps + 1):
+        target_dist = (i / steps) * total_distance
+        
+        for j in range(len(distances) - 1):
+            if distances[j] <= target_dist <= distances[j + 1]:
+                segment_progress = (target_dist - distances[j]) / (distances[j + 1] - distances[j])
+                pos = np.array(path[j]) + segment_progress * (np.array(path[j + 1]) - np.array(path[j]))
+                positions.append(pos.tolist())
+                break
+    
+    return positions
 
 
 user_db = {
@@ -23,7 +433,9 @@ locations = [
     {"id": "regional_center_1",  "name": "Regional Center 1",    "lat": 33.7874, "lng": -117.8743},
     {"id": "regional_center_2",  "name": "Regional Center 2",    "lat": 33.9425, "lng": -118.4081},
     {"id": "drop_zone_1",        "name": "Drop Zone 1",          "lat": 33.7676, "lng": -118.1957},
-    {"id": "drop_zone_2",        "name": "Drop Zone 2",          "lat": 32.7157, "lng": -117.1611},
+    {"id": "drop_zone_2",        "name": "Drop Zone 2",          "lat": 32.732157237315846, "lng":  -117.1436561915149},
+    {"id": "santa_monica",       "name": "Santa Monica",         "lat": 34.007472980651265,  "lng":  -118.47696175080151},
+    {"id": "downtown_la",        "name": "Downtown LA",         "lat": 34.052,  "lng": -118.243},
 ]
 
 # Drone fleet with statuses
@@ -188,6 +600,74 @@ def add_mission():
     }
     missions.insert(0, mission)
     return jsonify(mission), 201
+
+
+@app.route("/api/path", methods=["GET"])
+def get_path():
+    try:
+        start_lat = request.args.get("start_lat", type=float)
+        start_lng = request.args.get("start_lng", type=float)
+        end_lat = request.args.get("end_lat", type=float)
+        end_lng = request.args.get("end_lng", type=float)
+        
+        if not all([start_lat, start_lng, end_lat, end_lng]):
+            return jsonify({"error": "Start and end coordinates are required"}), 400
+        
+        start = [start_lat, start_lng]
+        end = [end_lat, end_lng]
+        
+        # check if weather API should be used
+        use_weather = request.args.get("use_weather", "true").lower() == "true"
+        
+        obstacles, api_error = get_osm_obstacles(start, end)
+        
+        if api_error:
+            return jsonify({
+                "error": api_error,
+                "path": [start, end],
+                "distance_km": round(haversine_distance(start, end), 2),
+                "api_failed": True
+            }), 503
+        
+        print(f"Found {len(obstacles)} obstacles")
+        
+        if obstacles:
+            route, avoided_obstacles = find_optimal_drone_path(start, end, obstacles)
+            print(f"Path calculated with {len(route)} waypoints, avoided {len(avoided_obstacles)} obstacles")
+        else:
+            route, avoided_obstacles = [start, end], []
+            print("No obstacles found, using direct path")
+        
+        route = simulate_drone_on_path(route, steps=50)
+        print(f"Interpolated path has {len(route)} points")
+        
+        total_distance = sum(haversine_distance(route[i-1], route[i]) for i in range(1, len(route)))
+        
+        # calculate average wind along the path only if use_weather is True
+        response_data = {
+            "path": route,
+            "distance_km": round(total_distance, 2),
+            "avoided_obstacles": len(avoided_obstacles),
+            "obstacles_found": len(obstacles),
+            "waypoints": len(route),
+            "api_failed": False
+        }
+        
+        if use_weather:
+            wind_data = get_weather_for_path(route)
+            response_data["wind_speed"] = wind_data.get("wind_speed", 12)
+            response_data["wind_direction"] = wind_data.get("wind_direction", "calm")
+        else:
+            # dont include wind data when manual mode is enabled
+            response_data["wind_speed"] = None
+            response_data["wind_direction"] = None
+        
+        return jsonify(response_data)
+    except Exception as e:
+        import traceback
+        print(f"Pathfinding error: {e}")
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
