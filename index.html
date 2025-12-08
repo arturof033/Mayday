@@ -1,243 +1,1730 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mayday • UI Prototype</title>
-  <!-- Leaflet CSS -->
+  <meta charset="UTF-8" />
+  <title>Mayday Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet for map -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <style>
-    :root {
-      --bg: #0f172a; /* slate-900 */
-      --card: #111827; /* gray-900 */
-      --text: #e5e7eb; /* gray-200 */
-      --muted: #9ca3af; /* gray-400 */
-      --accent: #22c55e; /* green-500 */
-      --warn: #f43f5e; /* rose-500 */
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      background: var(--bg); color: var(--text);
-      display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh;
-    }
-    header, footer { padding: 14px 18px; }
-    header {
-      display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #1f2937; /* gray-800 */
-    }
-    header img { height: 36px; width: 36px; border-radius: 8px; }
-    header h1 { font-size: 18px; margin: 0; }
-
-    .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px; }
-    @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
-
-    .panel {
-      background: var(--card); border: 1px solid #1f2937; border-radius: 14px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
-    }
-    .panel h2 { font-size: 16px; margin: 0 0 10px 0; color: var(--text); }
-    label { display: block; font-size: 12px; color: var(--muted); margin-top: 8px; }
-    input[type="number"], select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #374151; background: #0b1220; color: var(--text); }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-    button { cursor: pointer; border: none; border-radius: 12px; padding: 10px 12px; font-weight: 600; }
-    .btn {
-      background: #1f2937; color: var(--text); border: 1px solid #334155;
-    }
-    .btn.primary { background: var(--accent); color: #0b1220; border-color: transparent; }
-    .btn.ghost { background: transparent; border: 1px dashed #334155; }
-
-    .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
-
-    #map { height: 60vh; border-radius: 14px; border: 1px solid #1f2937; }
-
-    .status {
-      margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid #334155; background: #0b1220; font-size: 14px;
-    }
-    .status.success { border-color: #14532d; background: #052e16; color: #bbf7d0; }
-    .status.fail { border-color: #7f1d1d; background: #450a0a; color: #fecaca; }
-    .status.info { color: #93c5fd; border-color: #1e3a8a; background: #0b1220; }
-
-    footer { font-size: 12px; color: var(--muted); border-top: 1px solid #1f2937; }
-    code { background: #0b1220; padding: 2px 6px; border-radius: 6px; }
-  </style>
-</head>
-<body>
-  <header>
-    <img alt="Mayday logo" src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png" />
-    <div>
-      <h1>Mayday • Drone Delivery UI </h1>
-      <div class="note">Click the map to pick <strong>Start</strong> then <strong>End</strong>. Fill in the numbers and press <strong>Check Mission</strong>.</div>
-    </div>
-  </header>
-
-  <main class="wrap">
-    <section class="panel" id="controls">
-      <h2>Mission Inputs</h2>
-      <label>Drone Payload Weight (kg)
-        <input id="inpWeight" type="number" min="0" step="0.1" value="1.5" />
-      </label>
-      <label>Battery Health / Charge (%)
-        <input id="inpBattery" type="number" min="0" max="100" step="1" value="80" />
-      </label>
-      <label>Wind Speed (m/s)
-        <input id="inpWind" type="number" min="0" step="0.1" value="5" />
-      </label>
-      <label>Delivery Urgency
-        <select id="inpUrgency">
-          <option>Low</option>
-          <option selected>Medium</option>
-          <option>High</option>
-        </select>
-      </label>
-
-      <div class="row" style="margin-top:12px;">
-        <button class="btn" id="btnReset">Reset Points</button>
-        <button class="btn primary" id="btnCheck">Check Mission</button>
-      </div>
-
-      <div class="note">Distance (straight line): <span id="distance">—</span> km</div>
-      <div class="note">Start: <span id="startText">—</span></div>
-      <div class="note">End: <span id="endText">—</span></div>
-
-      <div id="status" class="status info">Pick two points on the map to set a route.</div>
-    </section>
-
-    <section class="panel">
-      <div id="map"></div>
-      <div class="note">Data source: OpenStreetMap contributors • Map via Leaflet.
-        This demo draws a straight line for simplicity. For real routing, plug into a routing API later.
-      </div>
-    </section>
-  </main>
-
-  <!-- Leaflet JS -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
+    defer
   ></script>
+
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+
+  <style>
+    :root {
+      --bg: #050505;
+      --bg-soft: #0b0b0d;
+      --card: #111827;
+      --accent: #b91c1c;
+      --accent-soft: rgba(185, 28, 28, 0.14);
+      --accent-strong: #dc2626;
+      --border: #1f2933;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --muted-light: #6b7280;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+      --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.9);
+      --transition-fast: 0.18s ease-out;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        sans-serif;
+      background: radial-gradient(circle at top, #111827 0, #050505 55%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #app-shell {
+      width: 100%;
+      max-width: 1240px;
+      min-height: 650px;
+      background: linear-gradient(145deg, #050505, #020203);
+      border-radius: 28px;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ---------- LOGIN ---------- */
+
+    #login-view {
+      display: flex;
+      width: 100%;
+    }
+
+    .login-panel {
+      flex: 1;
+      padding: 40px 42px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: radial-gradient(circle at top left, #111827 0, #050505 60%);
+    }
+
+    .login-header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .brand-text-main {
+      font-size: 1.1rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+
+    .brand-text-sub {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+    }
+
+    .login-main h2 {
+      margin-top: 24px;
+      font-size: 1.6rem;
+    }
+
+    .login-main p {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .login-form {
+      margin-top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 360px;
+    }
+
+    .field-group label {
+      display: block;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .field-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        transform 0.08s ease-out;
+    }
+
+    .field-group input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .primary-btn {
+      margin-top: 10px;
+      padding: 10px 18px;
+      border-radius: var(--radius-pill);
+      border: none;
+      background: linear-gradient(135deg, #b91c1c, #991b1b);
+      color: #f9fafb;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 18px 45px rgba(185, 28, 28, 0.7);
+      transition: transform 0.08s ease-out, box-shadow var(--transition-fast),
+        filter var(--transition-fast);
+    }
+
+    .primary-btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+    }
+
+    .primary-btn:active {
+      transform: translateY(1px) scale(0.99);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.8);
+    }
+
+    .login-note {
+      margin-top: 6px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .login-footer {
+      margin-top: 32px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid rgba(31, 41, 55, 0.9);
+      padding-top: 10px;
+    }
+
+    .pill {
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pill-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent-strong);
+      box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.25);
+    }
+
+    .login-side {
+      flex: 1;
+      padding: 40px 42px;
+      border-left: 1px solid var(--border);
+      background: radial-gradient(circle at top, #1f2937 0, #050505 60%);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .side-card {
+      border-radius: var(--radius-lg);
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid var(--border);
+      padding: 16px;
+      box-shadow: 0 14px 35px rgba(0, 0, 0, 0.8);
+      font-size: 0.82rem;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .side-card-title {
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+
+    .side-tag {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      background: var(--accent-soft);
+      border: 1px solid rgba(248, 113, 113, 0.6);
+      color: #fecaca;
+      align-self: flex-start;
+    }
+
+    /* ---------- APP MAIN ---------- */
+
+    #app-main {
+      display: none;
+      width: 100%;
+    }
+
+    .sidebar {
+      width: 230px;
+      background: radial-gradient(circle at top, #111827 0, #020203 60%);
+      border-right: 1px solid var(--border);
+      padding: 18px 18px 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .sidebar-header {
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      letter-spacing: 0.24em;
+    }
+
+    .sidebar-sub {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+    }
+
+    .nav-list {
+      list-style: none;
+      margin-top: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 7px 10px;
+      border-radius: var(--radius-pill);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: background var(--transition-fast), color var(--transition-fast),
+        transform 0.08s ease-out;
+    }
+
+    .nav-item button span.icon {
+      font-size: 0.9rem;
+    }
+
+    .nav-item button.active {
+      background: var(--accent-soft);
+      color: #fee2e2;
+      transform: translateY(-1px);
+      border: 1px solid rgba(248, 113, 113, 0.9);
+    }
+
+    .nav-item button:hover {
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text);
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      font-size: 0.75rem;
+      color: var(--muted);
+      border-top: 1px solid rgba(31, 41, 55, 0.9);
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .logout-btn {
+      border: none;
+      background: rgba(15, 23, 42, 0.96);
+      color: #fecaca;
+      padding: 6px 10px;
+      border-radius: var(--radius-pill);
+      font-size: 0.78rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(248, 113, 113, 0.6);
+      transition: background var(--transition-fast),
+        transform 0.08s ease-out;
+    }
+
+    .logout-btn:hover {
+      background: rgba(127, 29, 29, 0.7);
+      transform: translateY(-0.5px);
+    }
+
+    .content {
+      flex: 1;
+      padding: 18px 20px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .content-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .content-header-left h2 {
+      font-size: 1.3rem;
+    }
+
+    .content-header-left p {
+      font-size: 0.86rem;
+      color: var(--muted);
+    }
+
+    .user-chip {
+      padding: 6px 10px;
+      border-radius: var(--radius-pill);
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .user-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #111827;
+      border: 1px solid rgba(248, 113, 113, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    /* ---------- PAGES ---------- */
+
+    .page-section {
+      display: none;
+      flex: 1;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .page-section.active {
+      display: flex;
+    }
+
+    .card {
+      border-radius: var(--radius-lg);
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 14px 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-header h3 {
+      font-size: 0.98rem;
+    }
+
+    .card-header p {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .card-tag {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      padding: 4px 9px;
+      border-radius: var(--radius-pill);
+      background: var(--accent-soft);
+      border: 1px solid rgba(248, 113, 113, 0.8);
+      color: #fee2e2;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1.2fr;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text);
+      font-size: 0.86rem;
+      outline: none;
+      transition: border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        transform 0.08s ease-out;
+    }
+
+    select:focus,
+    input[type="number"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .mission-submit-row {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    #map {
+      width: 100%;
+      height: 260px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .status-banner {
+      margin-top: 8px;
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(52, 211, 153, 0.5);
+      background: rgba(6, 78, 59, 0.4);
+      color: #bbf7d0;
+    }
+
+    .status-banner.negative {
+      border-color: rgba(248, 113, 113, 0.8);
+      background: rgba(127, 29, 29, 0.6);
+      color: #fee2e2;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.3);
+    }
+
+    .status-dot.danger {
+      background: #ef4444;
+      box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.4);
+    }
+
+    .table-wrapper {
+      margin-top: 6px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.98);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    th,
+    td {
+      padding: 7px 9px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    thead {
+      background: #020617;
+    }
+
+    th {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    tbody tr:nth-child(even) {
+      background: rgba(15, 23, 42, 0.96);
+    }
+
+    .badge-status {
+      padding: 2px 7px;
+      border-radius: var(--radius-pill);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .badge-status.success {
+      background: rgba(22, 163, 74, 0.22);
+      color: #bbf7d0;
+    }
+
+    .badge-status.fail {
+      background: rgba(127, 29, 29, 0.5);
+      color: #fee2e2;
+    }
+
+    .badge-status.pending {
+      background: rgba(250, 204, 21, 0.16);
+      color: #facc15;
+    }
+
+    .secondary-btn {
+      border-radius: var(--radius-pill);
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.96);
+      color: var(--muted-light);
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: background var(--transition-fast),
+        color var(--transition-fast),
+        transform 0.08s ease-out;
+    }
+
+    .secondary-btn:hover {
+      background: rgba(31, 41, 55, 1);
+      color: var(--text);
+      transform: translateY(-0.5px);
+    }
+
+    /* Drones */
+    .drones-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .tab-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .tab-btn {
+      border-radius: var(--radius-pill);
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.96);
+      color: var(--muted-light);
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: var(--accent-soft);
+      border-color: rgba(248, 113, 113, 0.8);
+      color: #fee2e2;
+    }
+
+    .note {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Profile */
+    .profile-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .profile-field {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.86rem;
+    }
+
+    .profile-field input,
+    .profile-field select {
+      max-width: 260px;
+    }
+
+    /* Analytics */
+    #analytics-chart {
+      width: 100%;
+      height: 220px;
+    }
+
+    .analytics-legend {
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      #app-shell {
+        flex-direction: column;
+      }
+      .sidebar {
+        display: none;
+      }
+      .content {
+        padding: 16px;
+      }
+      #login-view {
+        flex-direction: column;
+      }
+      .login-side {
+        display: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .dashboard-grid,
+      .drones-layout,
+      .profile-grid {
+        grid-template-columns: 1fr;
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app-shell">
+    <!-- LOGIN -->
+    <div id="login-view">
+      <div class="login-panel">
+        <div>
+          <div class="login-header">
+            <div class="brand-text-main">MAYDAY</div>
+            <div class="brand-text-sub">DRONE DELIVERY CONTROL</div>
+          </div>
+
+          <div class="login-main">
+            <h2>Sign in to your console</h2>
+            <p>Track drones, missions, and manage delivery routes in one place.</p>
+
+            <form id="login-form" class="login-form">
+              <div class="field-group">
+                <label for="login-email">Email</label>
+                <input id="login-email" type="email" required placeholder="you@example.com" />
+              </div>
+              <div class="field-group">
+                <label for="login-password">Password</label>
+                <input id="login-password" type="password" required placeholder="••••••••" />
+              </div>
+              <button type="submit" class="primary-btn">
+                Enter Console
+                <span>→</span>
+              </button>
+              <p class="login-note">
+                
+              </p>
+            </form>
+          </div>
+        </div>
+
+        <div class="login-footer">
+          <span>Battery and wind-aware routing for time-sensitive drone deliveries across different industries.</span>
+          <div class="pill">
+            <span class="pill-dot"></span>
+            <span>Mayday</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="login-side">
+        <div class="side-card">
+          <div class="side-card-title">What is Mayday?</div>
+          <div class="side-tag">Overview</div>
+          <p>
+            Mayday lets you:
+          </p>
+          <ul style="margin-left: 18px; margin-top: 6px; line-height: 1.4;">
+            <li>Log in as an operator</li>
+            <li>Check missions between SoCal locations</li>
+            <li>See which drones are in flight vs pending launch</li>
+            <li>View a small analytics summary</li>
+          </ul>
+        </div>
+
+        <div class="side-card">
+          <div class="side-card-title">Tech used</div>
+          <p>
+            Frontend: HTML, CSS, vanilla JavaScript, Leaflet, Chart.js  
+            Backend: Flask (Python), JSON APIs
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- APP MAIN -->
+    <div id="app-main">
+      <aside class="sidebar">
+        <div>
+          <div class="sidebar-header">MAYDAY CONSOLE</div>
+
+          <ul class="nav-list">
+            <li class="nav-item">
+              <button data-page="dashboard" class="active">
+                <span class="icon">🏠</span>
+                Dashboard
+              </button>
+            </li>
+            <li class="nav-item">
+              <button data-page="drones">
+                <span class="icon">🚁</span>
+                Drones
+              </button>
+            </li>
+            <li class="nav-item">
+              <button data-page="missions">
+                <span class="icon">📋</span>
+                Missions
+              </button>
+            </li>
+            <li class="nav-item">
+              <button data-page="analytics">
+                <span class="icon">📈</span>
+                Analytics
+              </button>
+            </li>
+            <li class="nav-item">
+              <button data-page="profile">
+                <span class="icon">👤</span>
+                Profile
+              </button>
+            </li>
+            <li class="nav-item">
+              <button data-page="settings">
+                <span class="icon">⚙️</span>
+                Settings
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <div class="sidebar-footer">
+          <button class="logout-btn" id="logout-btn">
+            <span>⟲</span>
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="content-header">
+          <div class="content-header-left">
+            <h2 id="page-title">Dashboard</h2>
+            <p id="page-subtitle">Mission overview. </p>
+          </div>
+          <div class="user-chip" id="user-chip">
+            <div class="user-avatar" id="user-avatar">OP</div>
+            <div>
+              <div id="user-name" style="font-size: 0.8rem;">Operator</div>
+              <div style="font-size: 0.7rem; color: var(--muted-light);">Click to open profile</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <section id="page-dashboard" class="page-section active">
+          <div class="dashboard-grid">
+       
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Check a mission</h3>
+                  <p>Select a start and destination to check if the drone can make it safely.</p>
+                </div>
+                <span class="card-tag">Overview</span>
+              </div>
+
+              <form id="mission-form">
+                <div class="form-grid">
+                  <div class="field-group">
+                    <label for="start-location">Start</label>
+                    <select id="start-location" required></select>
+                  </div>
+                  <div class="field-group">
+                    <label for="end-location">Destination</label>
+                    <select id="end-location" required></select>
+                  </div>
+                  <div class="field-group">
+                    <label for="payload-weight">Payload (kg)</label>
+                    <input id="payload-weight" type="number" min="0" step="0.1" value="1.0" required />
+                  </div>
+                  <div class="field-group">
+                    <label for="battery-health">Battery health (%)</label>
+                    <input id="battery-health" type="number" min="1" max="100" value="85" required />
+                  </div>
+                  <div class="field-group">
+                    <label for="wind-speed">Wind speed (km/h)</label>
+                    <input id="wind-speed" type="number" min="0" step="1" value="12" required />
+                  </div>
+                  <div class="field-group">
+                    <label for="wind-direction">Wind direction</label>
+                    <select id="wind-direction">
+                      <option value="headwind">Headwind</option>
+                      <option value="tailwind">Tailwind</option>
+                      <option value="crosswind">Crosswind</option>
+                      <option value="calm">Calm</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="mission-submit-row">
+                  <button type="submit" class="primary-btn">
+                    Simulate mission
+                    <span>▶</span>
+                  </button>
+                </div>
+              </form>
+
+              <div id="mission-status" class="status-banner" style="display: none;">
+                <div class="status-dot"></div>
+                <span id="mission-status-text"></span>
+              </div>
+            </div>
+
+            <!-- Right: Map -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Route view</h3>
+                </div>
+                <span class="card-tag">Leaflet • OpenStreetMap</span>
+              </div>
+              <div id="map"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- DRONES -->
+        <section id="page-drones" class="page-section">
+          <div class="drones-layout">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Drones currently out</h3>
+                  <p>Drones that are already in flight.</p>
+                </div>
+                <span class="card-tag">Real-time view</span>
+              </div>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Battery</th>
+                      <th>Mission</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="drones-out-body">
+                    <!-- filled by JS -->
+                  </tbody>
+                </table>
+              </div>
+              <p class="note">Use “Mark completed” to bring a drone back from a mission.</p>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Drones about to be released</h3>
+                  <p>Drones in a pending launch state.</p>
+                </div>
+              </div>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Battery</th>
+                      <th>Mission</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="drones-pending-body">
+                    <!-- filled by JS -->
+                  </tbody>
+                </table>
+              </div>
+              <p class="note">
+                Launch will set the drone to “in flight” and drop its battery a bit, while cancel will move it back to idle.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- MISSIONS -->
+        <section id="page-missions" class="page-section">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Mission history</h3>
+                <p>Previous missions and their predicted outcome.</p>
+              </div>
+              <div>
+                <select id="mission-filter">
+                  <option value="all">All</option>
+                  <option value="success">Successful</option>
+                  <option value="fail">Failed</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Route</th>
+                    <th>Distance (km)</th>
+                    <th>Battery</th>
+                    <th>Payload</th>
+                    <th>Wind</th>
+                    <th>Result</th>
+                  </tr>
+                </thead>
+                <tbody id="missions-table-body">
+                </tbody>
+              </table>
+            </div>
+            <p class="note">
+            </p>
+          </div>
+        </section>
+
+        <!-- ANALYTICS -->
+        <section id="page-analytics" class="page-section">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Mission analytics</h3>
+                <p>High-level success vs failure counts.</p>
+              </div>
+            </div>
+            <canvas id="analytics-chart"></canvas>
+            <div class="analytics-legend">
+              <span>Total: <span id="analytics-total">0</span></span>
+              <span>Success rate: <span id="analytics-success-rate">0%</span></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- PROFILE -->
+        <section id="page-profile" class="page-section">
+          <div class="profile-grid">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Profile</h3>
+                  <p>Information about the current operator.</p>
+                </div>
+              </div>
+              <div class="profile-field">
+                <span>Email</span>
+                <span id="profile-email" style="color: var(--muted-light); font-size: 0.86rem;"></span>
+              </div>
+              <div class="profile-field">
+                <label for="profile-name">Display name</label>
+                <input id="profile-name" type="text" />
+              </div>
+              <div class="profile-field">
+                <label for="profile-role">Role</label>
+                <input id="profile-role" type="text" disabled />
+              </div>
+              <button id="profile-save-btn" class="primary-btn" style="margin-top: 10px; padding-inline: 16px;">
+                Save profile
+              </button>
+              <p class="note">
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>Theme</h3>
+                </div>
+              </div>
+              <div class="profile-field">
+                <label for="profile-theme">Theme</label>
+                <select id="profile-theme">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light (label only)</option>
+                </select>
+              </div>
+              <p class="note">
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section id="page-settings" class="page-section">
+          <div class="card">
+            <div class="card-header">
+              <div>
+              </div>
+            </div>
+            <div style="margin-top: 4px;">
+              <label style="font-size: 0.82rem;">
+                <input type="checkbox" id="setting-aggressive-battery" />
+                &nbsp;Treat low battery as riskier (aggressive model)
+              </label>
+            </div>
+            <div style="margin-top: 6px;">
+              <label style="font-size: 0.82rem;">
+                <input type="checkbox" id="setting-strict-wind" />
+                &nbsp;Block missions with strong headwind
+              </label>
+            </div>
+            <p class="note">
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
   <script>
-    // Map setup (Orange County area by default)
-    const map = L.map('map').setView([33.68, -117.82], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
+    const API_BASE = "http://127.0.0.1:5000/api";
 
-    // State
-    let start = null, end = null;
-    let startMarker = null, endMarker = null;
-    let pathLine = null;
+    const AppState = {
+      token: null,
+      user: null,
+      locations: [],
+      missions: [],
+      drones: [],
+      settings: {
+        aggressiveBattery: false,
+        strictWind: false,
+      },
+    };
 
-    const $ = (id) => document.getElementById(id);
-    const distanceEl = $('distance');
-    const startText = $('startText');
-    const endText = $('endText');
-    const statusEl = $('status');
+    let mapInstance = null;
+    let routeLayer = null;
+    let analyticsChart = null;
 
-    // Haversine distance (km)
-    function haversine(lat1, lon1, lat2, lon2) {
-      const toRad = (d) => d * Math.PI / 180;
-      const R = 6371; // km
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
+    document.addEventListener("DOMContentLoaded", () => {
+      const loginView = document.getElementById("login-view");
+      const appMain = document.getElementById("app-main");
+      const loginForm = document.getElementById("login-form");
+      const logoutBtn = document.getElementById("logout-btn");
+      const navButtons = document.querySelectorAll(".nav-item button");
+      const pageTitle = document.getElementById("page-title");
+      const pageSubtitle = document.getElementById("page-subtitle");
+      const userChip = document.getElementById("user-chip");
+      const userAvatar = document.getElementById("user-avatar");
+      const userName = document.getElementById("user-name");
 
-    function updatePath() {
-      if (!start || !end) return;
-      const coords = [start, end];
-      const distKm = haversine(start.lat, start.lng, end.lat, end.lng);
-      distanceEl.textContent = distKm.toFixed(2);
+      // Mission elements
+      const missionForm = document.getElementById("mission-form");
+      const missionStatusEl = document.getElementById("mission-status");
+      const missionStatusTextEl = document.getElementById("mission-status-text");
+      const missionFilter = document.getElementById("mission-filter");
+      const missionsTableBody = document.getElementById("missions-table-body");
 
-      if (pathLine) pathLine.remove();
-      pathLine = L.polyline(coords, { color: '#60a5fa', weight: 4 }).addTo(map);
-      map.fitBounds(L.latLngBounds(coords), { padding: [20, 20] });
-    }
+      // Drone elements
+      const dronesOutBody = document.getElementById("drones-out-body");
+      const dronesPendingBody = document.getElementById("drones-pending-body");
 
-    function setStatus(kind, msg) {
-      statusEl.className = 'status ' + (kind || 'info');
-      statusEl.textContent = msg;
-    }
+      // Profile elements
+      const profileEmailEl = document.getElementById("profile-email");
+      const profileNameEl = document.getElementById("profile-name");
+      const profileRoleEl = document.getElementById("profile-role");
+      const profileThemeEl = document.getElementById("profile-theme");
+      const profileSaveBtn = document.getElementById("profile-save-btn");
 
-    map.on('click', (e) => {
-      if (!start) {
-        start = e.latlng;
-        if (startMarker) startMarker.remove();
-        startMarker = L.marker(start, {title: 'Start'}).addTo(map).bindPopup('Start').openPopup();
-        startText.textContent = `${start.lat.toFixed(5)}, ${start.lng.toFixed(5)}`;
-        setStatus('info', 'Start set. Click again to set End.');
-      } else if (!end) {
-        end = e.latlng;
-        if (endMarker) endMarker.remove();
-        endMarker = L.marker(end, {title: 'End'}).addTo(map).bindPopup('End').openPopup();
-        endText.textContent = `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}`;
-        updatePath();
-        setStatus('info', 'Route set. Fill inputs and click Check Mission.');
+      // Settings elements
+      const settingAggressiveBattery = document.getElementById("setting-aggressive-battery");
+      const settingStrictWind = document.getElementById("setting-strict-wind");
+
+      // --- Initialization of map & chart will happen after login ---
+
+      // Try to restore token from localStorage
+      const storedToken = localStorage.getItem("maydayToken");
+      if (storedToken) {
+        AppState.token = storedToken;
+        showApp(); // will call /me to verify
       } else {
-        // If both set, replace End for convenience
-        end = e.latlng;
-        if (endMarker) endMarker.remove();
-        endMarker = L.marker(end, {title: 'End'}).addTo(map).bindPopup('End').openPopup();
-        endText.textContent = `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}`;
-        updatePath();
+        showLogin();
+      }
+
+      function showLogin() {
+        loginView.style.display = "flex";
+        appMain.style.display = "none";
+      }
+
+      async function showApp() {
+        loginView.style.display = "none";
+        appMain.style.display = "flex";
+
+        try {
+          await fetchCurrentUser();
+          await Promise.all([fetchLocations(), fetchDrones(), fetchMissions()]);
+        } catch (err) {
+          console.error(err);
+          alert("Could not contact backend. Is Flask running?");
+          showLogin();
+          return;
+        }
+
+        // Update UI with user info
+        userName.textContent = AppState.user.name || "Operator";
+        userAvatar.textContent = (AppState.user.name || "O").charAt(0).toUpperCase();
+
+        // Fill profile page
+        profileEmailEl.textContent = AppState.user.email;
+        profileNameEl.value = AppState.user.name || "";
+        profileRoleEl.value = AppState.user.role || "Operator";
+        profileThemeEl.value = AppState.user.theme || "dark";
+
+        // Initialize map & selects
+        initializeMap();
+        populateLocationSelects();
+
+        // Render drones & missions & analytics
+        renderDrones();
+        renderMissionsTable();
+        initializeAnalyticsChart();
+        updateAnalytics();
+      }
+
+      // ------------- API helpers -------------
+
+      async function apiRequest(path, options = {}) {
+        const headers = options.headers || {};
+        if (AppState.token) {
+          headers["Authorization"] = "Bearer " + AppState.token;
+        }
+        if (!(options.body instanceof FormData)) {
+          headers["Content-Type"] = "application/json";
+        }
+
+        const res = await fetch(API_BASE + path, {
+          ...options,
+          headers,
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || ("Request failed: " + res.status));
+        }
+        return res.json();
+      }
+
+      async function fetchCurrentUser() {
+        const data = await apiRequest("/me", { method: "GET" });
+        AppState.user = data;
+      }
+
+      async function fetchLocations() {
+        const data = await apiRequest("/locations", { method: "GET" });
+        AppState.locations = data;
+      }
+
+      async function fetchDrones() {
+        const data = await apiRequest("/drones", { method: "GET" });
+        AppState.drones = data;
+      }
+
+      async function fetchMissions() {
+        const data = await apiRequest("/missions", { method: "GET" });
+        AppState.missions = data;
+      }
+
+      // ------------- LOGIN -------------
+
+      loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value.trim();
+
+        if (!email || !password) return;
+
+        try {
+          const res = await fetch(API_BASE + "/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          if (!res.ok) {
+            alert("Login failed. Check backend.");
+            return;
+          }
+          const data = await res.json();
+          AppState.token = data.token;
+          AppState.user = data.user;
+          localStorage.setItem("maydayToken", data.token);
+          showApp();
+        } catch (err) {
+          console.error(err);
+          alert("Could not reach backend. Make sure Flask is running.");
+        }
+      });
+
+      logoutBtn.addEventListener("click", () => {
+        AppState.token = null;
+        AppState.user = null;
+        localStorage.removeItem("maydayToken");
+        showLogin();
+      });
+
+      // Clicking avatar opens profile page
+      userChip.addEventListener("click", () => {
+        setActivePage("profile");
+        navButtons.forEach((b) => b.classList.remove("active"));
+        document.querySelector('button[data-page="profile"]').classList.add("active");
+      });
+
+      // ------------- NAVIGATION -------------
+
+      navButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const page = btn.getAttribute("data-page");
+          setActivePage(page);
+          navButtons.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+        });
+      });
+
+      function setActivePage(page) {
+        const sections = document.querySelectorAll(".page-section");
+        sections.forEach((sec) => sec.classList.remove("active"));
+        const active = document.getElementById(`page-${page}`);
+        if (active) active.classList.add("active");
+
+        switch (page) {
+          case "dashboard":
+            pageTitle.textContent = "Dashboard";
+            pageSubtitle.textContent = "Mission simulation and quick status overview.";
+            break;
+          case "drones":
+            pageTitle.textContent = "Drones";
+            pageSubtitle.textContent = "Drones already out vs drones about to be released.";
+            break;
+          case "missions":
+            pageTitle.textContent = "Missions";
+            break;
+          case "analytics":
+            pageTitle.textContent = "Analytics";
+            pageSubtitle.textContent = "High-level performance across missions.";
+            break;
+          case "profile":
+            pageTitle.textContent = "Profile";
+            pageSubtitle.textContent = "Operator information and preferences.";
+            break;
+          case "settings":
+            pageTitle.textContent = "Settings";
+            pageSubtitle.textContent = "Simple local simulation rules.";
+            break;
+        }
+      }
+
+      // ------------- MAP & LOCATIONS -------------
+
+      function initializeMap() {
+        if (mapInstance) return;
+        const defaultCenter = [33.882, -117.8854]; // CSUF
+        mapInstance = L.map("map").setView(defaultCenter, 9);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(mapInstance);
+      }
+
+      function populateLocationSelects() {
+        const startSelect = document.getElementById("start-location");
+        const endSelect = document.getElementById("end-location");
+
+        [startSelect, endSelect].forEach((select) => {
+          select.innerHTML = "";
+          AppState.locations.forEach((loc) => {
+            const opt = document.createElement("option");
+            opt.value = loc.id;
+            opt.textContent = loc.name;
+            select.appendChild(opt);
+          });
+        });
+
+        if (startSelect.options.length > 0) startSelect.selectedIndex = 0;
+        if (endSelect.options.length > 1) endSelect.selectedIndex = 1;
+      }
+
+      function getLocationById(id) {
+        return AppState.locations.find((loc) => loc.id === id);
+      }
+
+      function drawRoute(start, end) {
+        if (!mapInstance) return;
+
+        const startLatLng = [start.lat, start.lng];
+        const endLatLng = [end.lat, end.lng];
+
+        if (routeLayer) {
+          mapInstance.removeLayer(routeLayer);
+        }
+
+        routeLayer = L.polyline([startLatLng, endLatLng], { weight: 4 }).addTo(mapInstance);
+        mapInstance.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
+
+        L.circleMarker(startLatLng, { radius: 5 }).addTo(mapInstance);
+        L.circleMarker(endLatLng, { radius: 5 }).addTo(mapInstance);
+      }
+
+      // ------------- MISSION SIM -------------
+
+      missionForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const startId = document.getElementById("start-location").value;
+        const endId = document.getElementById("end-location").value;
+        const payload = parseFloat(document.getElementById("payload-weight").value);
+        const battery = parseFloat(document.getElementById("battery-health").value);
+        const windSpeed = parseFloat(document.getElementById("wind-speed").value);
+        const windDirection = document.getElementById("wind-direction").value;
+
+        const start = getLocationById(startId);
+        const end = getLocationById(endId);
+
+        if (!start || !end || start.id === end.id) {
+          showMissionStatus("Please choose two different locations.", false);
+          return;
+        }
+
+        const distance = haversine(start.lat, start.lng, end.lat, end.lng);
+        const { success, reason } = evaluateMission(
+          distance,
+          payload,
+          battery,
+          windSpeed,
+          windDirection
+        );
+
+        // Show route
+        drawRoute(start, end);
+
+        // Post mission to backend
+        try {
+          const result = await apiRequest("/missions", {
+            method: "POST",
+            body: JSON.stringify({
+              start: start.name,
+              end: end.name,
+              distance_km: distance.toFixed(2),
+              payload_kg: payload,
+              battery,
+              wind_speed: windSpeed,
+              wind_direction: windDirection,
+              result: success ? "success" : "fail",
+            }),
+          });
+          AppState.missions.unshift(result);
+          renderMissionsTable();
+          updateAnalytics();
+        } catch (err) {
+          console.error(err);
+        }
+
+        const text = success
+          ? `OK: approx ${distance.toFixed(1)} km, safe margin detected. ${reason}`
+          : `Not recommended: approx ${distance.toFixed(1)} km, risk too high. ${reason}`;
+        showMissionStatus(text, success);
+      });
+
+      function showMissionStatus(text, success) {
+        missionStatusEl.style.display = "flex";
+        missionStatusTextEl.textContent = text;
+        missionStatusEl.classList.remove("negative");
+        missionStatusEl.querySelector(".status-dot").classList.remove("danger");
+        if (!success) {
+          missionStatusEl.classList.add("negative");
+          missionStatusEl.querySelector(".status-dot").classList.add("danger");
+        }
+      }
+
+      function haversine(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(lat1)) *
+            Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      function toRad(v) {
+        return (v * Math.PI) / 180;
+      }
+
+      function evaluateMission(distanceKm, payloadKg, batteryPercent, windSpeed, windDirection) {
+        let cost = distanceKm * 0.5 + payloadKg * 0.8 + windSpeed * 0.25;
+
+        if (AppState.settings.aggressiveBattery) cost *= 1.15;
+        if (AppState.settings.strictWind && windDirection === "headwind" && windSpeed > 20) {
+          return {
+            success: false,
+            reason: "Strict wind rule: headwind above 20 km/h blocks the mission.",
+          };
+        }
+
+        const margin = batteryPercent - cost;
+        const success = margin > 12 && batteryPercent > 35;
+
+        let reason = "";
+        if (success) {
+          reason =
+            "Battery margin is above the safety threshold. Mission is likely to succeed.";
+        } else {
+          reason =
+            "Battery margin or health is too low. The drone might not make a safe return.";
+        }
+
+        return { success, reason };
+      }
+
+      // ------------- MISSIONS TABLE -------------
+
+      missionFilter.addEventListener("change", () => {
+        renderMissionsTable();
+      });
+
+      function renderMissionsTable() {
+        missionsTableBody.innerHTML = "";
+        const filter = missionFilter.value;
+
+        AppState.missions.forEach((m, index) => {
+          if (filter === "success" && m.result !== "success") return;
+          if (filter === "fail" && m.result !== "fail") return;
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${AppState.missions.length - index}</td>
+            <td>${m.start} → ${m.end}</td>
+            <td>${m.distance_km}</td>
+            <td>${m.battery}%</td>
+            <td>${m.payload_kg} kg</td>
+            <td>${m.wind_speed} km/h (${m.wind_direction})</td>
+            <td>
+              <span class="badge-status ${
+                m.result === "success" ? "success" : "fail"
+              }">
+                ${m.result.toUpperCase()}
+              </span>
+            </td>
+          `;
+          missionsTableBody.appendChild(tr);
+        });
+      }
+
+      // ------------- DRONES -------------
+
+      function renderDrones() {
+        dronesOutBody.innerHTML = "";
+        dronesPendingBody.innerHTML = "";
+
+        AppState.drones.forEach((d) => {
+          if (d.status === "in_flight") {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${d.id}</td>
+              <td>${d.name}</td>
+              <td>${d.battery}%</td>
+              <td>${d.current_mission || "-"}</td>
+              <td>
+                <button class="secondary-btn" data-action="complete" data-id="${d.id}">
+                  Mark completed
+                </button>
+              </td>
+            `;
+            dronesOutBody.appendChild(tr);
+          } else if (d.status === "pending_launch") {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${d.id}</td>
+              <td>${d.name}</td>
+              <td>${d.battery}%</td>
+              <td>${d.current_mission || "-"}</td>
+              <td>
+                <button class="secondary-btn" data-action="launch" data-id="${d.id}">
+                  Launch
+                </button>
+                <button class="secondary-btn" data-action="cancel" data-id="${d.id}">
+                  Cancel
+                </button>
+              </td>
+            `;
+            dronesPendingBody.appendChild(tr);
+          }
+        });
+
+        // Attach click handlers
+        dronesOutBody.querySelectorAll("button").forEach((btn) => {
+          btn.addEventListener("click", () => handleDroneAction(btn));
+        });
+        dronesPendingBody.querySelectorAll("button").forEach((btn) => {
+          btn.addEventListener("click", () => handleDroneAction(btn));
+        });
+      }
+
+      async function handleDroneAction(btn) {
+        const action = btn.getAttribute("data-action");
+        const id = parseInt(btn.getAttribute("data-id"), 10);
+
+        try {
+          let status;
+          if (action === "complete") status = "idle";
+          if (action === "launch") status = "in_flight";
+          if (action === "cancel") status = "idle";
+
+          const updated = await apiRequest(`/drones/${id}/status`, {
+            method: "POST",
+            body: JSON.stringify({
+              status,
+              mission_code: `MANUAL-${id}`,
+            }),
+          });
+
+          // update local state
+          const index = AppState.drones.findIndex((d) => d.id === id);
+          if (index !== -1) {
+            AppState.drones[index] = updated;
+          }
+          renderDrones();
+        } catch (err) {
+          console.error(err);
+          alert("Unable to update drone status. Check backend.");
+        }
+      }
+
+      // ------------- PROFILE -------------
+
+      profileSaveBtn.addEventListener("click", async () => {
+        const newName = profileNameEl.value.trim();
+        const newTheme = profileThemeEl.value;
+        try {
+          const updated = await apiRequest("/profile", {
+            method: "POST",
+            body: JSON.stringify({ name: newName, theme: newTheme }),
+          });
+          AppState.user = updated;
+          userName.textContent = updated.name || "Operator";
+          userAvatar.textContent = (updated.name || "O").charAt(0).toUpperCase();
+          alert("Profile saved (server-side).");
+        } catch (err) {
+          console.error(err);
+          alert("Could not save profile.");
+        }
+      });
+
+      // ------------- SETTINGS (FRONT-END ONLY) -------------
+
+      settingAggressiveBattery.addEventListener("change", () => {
+        AppState.settings.aggressiveBattery = settingAggressiveBattery.checked;
+      });
+
+      settingStrictWind.addEventListener("change", () => {
+        AppState.settings.strictWind = settingStrictWind.checked;
+      });
+
+      // ------------- ANALYTICS -------------
+
+      function initializeAnalyticsChart() {
+        if (analyticsChart) return;
+        const ctx = document.getElementById("analytics-chart").getContext("2d");
+
+        analyticsChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: ["Successful", "Failed"],
+            datasets: [
+              {
+                label: "Missions",
+                data: [0, 0],
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: {
+                ticks: { color: "#9ca3af", font: { size: 11 } },
+                grid: { display: false },
+              },
+              y: {
+                beginAtZero: true,
+                ticks: { color: "#9ca3af", font: { size: 11 }, precision: 0 },
+                grid: { color: "rgba(55, 65, 81, 0.8)" },
+              },
+            },
+          },
+        });
+      }
+
+      function updateAnalytics() {
+        const total = AppState.missions.length;
+        const successCount = AppState.missions.filter((m) => m.result === "success").length;
+        const failCount = total - successCount;
+        document.getElementById("analytics-total").textContent = total;
+        const rate = total === 0 ? 0 : Math.round((successCount / total) * 100);
+        document.getElementById("analytics-success-rate").textContent = rate + "%";
+
+        if (analyticsChart) {
+          analyticsChart.data.datasets[0].data = [successCount, failCount];
+          analyticsChart.update();
+        }
       }
     });
-
-    $('btnReset').addEventListener('click', () => {
-      start = end = null;
-      if (startMarker) startMarker.remove();
-      if (endMarker) endMarker.remove();
-      if (pathLine) pathLine.remove();
-      distanceEl.textContent = '—';
-      startText.textContent = '—';
-      endText.textContent = '—';
-      setStatus('info', 'Pick two points on the map to set a route.');
-    });
-
-    // This is a toy model to mirror the report’s idea: battery + wind + weight + distance.
-    // RequiredEnergy = base * distanceKm * (1 + wind/20) * (1 + weight/10)
-    // AvailableEnergy = (battery% / 100) * capacityUnits (assume 120 units)
-    function checkMission() {
-      if (!start || !end) {
-        setStatus('fail', 'Please pick Start and End by clicking the map.');
-        return;
-      }
-      const weight = Number($('inpWeight').value || 0);
-      const battery = Number($('inpBattery').value || 0);
-      const wind = Number($('inpWind').value || 0);
-      const urgency = $('inpUrgency').value; // not used yet — could adjust thresholds
-
-      const distKm = Number(distanceEl.textContent.replace('—','0')) || 0;
-
-      const basePerKm = 9.5; // toy constant
-      const windFactor = 1 + (wind / 20);
-      const weightFactor = 1 + (weight / 10);
-      const required = basePerKm * distKm * windFactor * weightFactor;
-
-      const capacityUnits = 120; // pretend full battery energy units
-      const available = (battery / 100) * capacityUnits;
-
-      const ok = available >= required;
-
-      if (pathLine) {
-        pathLine.setStyle({ color: ok ? '#22c55e' : '#f43f5e', weight: 5 });
-      }
-
-      const msg = ok
-        ? 'Conditions for delivery are ideal. Delivery was successful.'
-        : 'Conditions for delivery are not ideal. Delivery was unsuccessful.';
-      setStatus(ok ? 'success' : 'fail', `${msg} (Required: ${required.toFixed(1)} u, Available: ${available.toFixed(1)} u)`);
-    }
-
-    $('btnCheck').addEventListener('click', checkMission);
   </script>
 </body>
 </html>
