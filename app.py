@@ -4,14 +4,231 @@ import numpy as np
 import requests
 import os
 from math import radians, cos, sin, sqrt, atan2
+import bcrypt
+import jwt
+import secrets
+from datetime import datetime, timedelta
+from functools import wraps
+import sqlite3
+from contextlib import closing
 
 app = Flask(__name__)
 
+# Configure CORS to allow all origins and handle preflight requests
 CORS(app, 
-     origins="*",
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization"],
-     supports_credentials=False)
+     resources={
+         r"/api/*": {
+             "origins": "*",
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": ["Content-Type", "Authorization"],
+             "supports_credentials": False,
+             "max_age": 3600
+         }
+     },
+     supports_credentials=False,
+     automatic_options=True)
+
+# database configuration
+DATABASE = 'mayday.db'
+
+def get_db():
+    """Get database connection"""
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+    return conn
+
+def init_db():
+    """Initialize the database with schema"""
+    with closing(get_db()) as conn:
+        # Users table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'Operator',
+                theme TEXT NOT NULL DEFAULT 'dark',
+                password_hash TEXT NOT NULL,
+                aggressive_battery INTEGER DEFAULT 0,
+                strict_wind INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # add settings columns if they don't exist (for existing databases)
+        try:
+            conn.execute('ALTER TABLE users ADD COLUMN aggressive_battery INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            conn.execute('ALTER TABLE users ADD COLUMN strict_wind INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        
+        # missions table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS missions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                start TEXT NOT NULL,
+                end TEXT NOT NULL,
+                distance_km REAL NOT NULL,
+                payload_kg REAL NOT NULL,
+                battery INTEGER NOT NULL,
+                wind_speed REAL NOT NULL,
+                wind_direction TEXT NOT NULL,
+                result TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        ''')
+        
+        conn.commit()
+        
+        # check if demo user exists, if not create it
+        cursor = conn.execute('SELECT id FROM users WHERE email = ?', ('demo@mayday.com',))
+        if cursor.fetchone() is None:
+            demo_password_hash = bcrypt.hashpw("demo123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            conn.execute('''
+                INSERT INTO users (email, name, role, theme, password_hash)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('demo@mayday.com', 'Demo Operator', 'Dispatcher', 'dark', demo_password_hash))
+            conn.commit()
+
+def get_user_by_email(email):
+    """Get user by email from database"""
+    with closing(get_db()) as conn:
+        cursor = conn.execute(
+            'SELECT id, email, name, role, theme, password_hash, aggressive_battery, strict_wind FROM users WHERE email = ?',
+            (email,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                'id': row['id'],
+                'email': row['email'],
+                'name': row['name'],
+                'role': row['role'],
+                'theme': row['theme'],
+                'password_hash': row['password_hash'],
+                'aggressive_battery': bool(row['aggressive_battery']),
+                'strict_wind': bool(row['strict_wind'])
+            }
+        return None
+
+def create_user(email, name, role, theme, password_hash):
+    """Create a new user in the database"""
+    with closing(get_db()) as conn:
+        cursor = conn.execute('''
+            INSERT INTO users (email, name, role, theme, password_hash, aggressive_battery, strict_wind)
+            VALUES (?, ?, ?, ?, ?, 0, 0)
+        ''', (email, name, role, theme, password_hash))
+        conn.commit()
+        user_id = cursor.lastrowid
+        return {
+            'id': user_id,
+            'email': email,
+            'name': name,
+            'role': role,
+            'theme': theme,
+            'aggressive_battery': False,
+            'strict_wind': False
+        }
+
+def update_user(email, name=None, theme=None, aggressive_battery=None, strict_wind=None):
+    """Update user information in the database"""
+    with closing(get_db()) as conn:
+        if name is not None:
+            conn.execute('UPDATE users SET name = ? WHERE email = ?', (name, email))
+        if theme is not None:
+            conn.execute('UPDATE users SET theme = ? WHERE email = ?', (theme, email))
+        if aggressive_battery is not None:
+            conn.execute('UPDATE users SET aggressive_battery = ? WHERE email = ?', (1 if aggressive_battery else 0, email))
+        if strict_wind is not None:
+            conn.execute('UPDATE users SET strict_wind = ? WHERE email = ?', (1 if strict_wind else 0, email))
+        conn.commit()
+        return get_user_by_email(email)
+
+def create_mission(user_id, start, end, distance_km, payload_kg, battery, wind_speed, wind_direction, result):
+    """Create a new mission in the database"""
+    with closing(get_db()) as conn:
+        cursor = conn.execute('''
+            INSERT INTO missions (user_id, start, end, distance_km, payload_kg, battery, wind_speed, wind_direction, result)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, start, end, distance_km, payload_kg, battery, wind_speed, wind_direction, result))
+        conn.commit()
+        mission_id = cursor.lastrowid
+        return {
+            'id': mission_id,
+            'user_id': user_id,
+            'start': start,
+            'end': end,
+            'distance_km': distance_km,
+            'payload_kg': payload_kg,
+            'battery': battery,
+            'wind_speed': wind_speed,
+            'wind_direction': wind_direction,
+            'result': result
+        }
+
+def get_missions_by_user(user_id):
+    """Get all missions for a specific user, ordered by most recent first"""
+    with closing(get_db()) as conn:
+        cursor = conn.execute('''
+            SELECT id, user_id, start, end, distance_km, payload_kg, battery, wind_speed, wind_direction, result, created_at
+            FROM missions
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+        ''', (user_id,))
+        missions = []
+        for row in cursor.fetchall():
+            missions.append({
+                'id': row['id'],
+                'user_id': row['user_id'],
+                'start': row['start'],
+                'end': row['end'],
+                'distance_km': row['distance_km'],
+                'payload_kg': row['payload_kg'],
+                'battery': row['battery'],
+                'wind_speed': row['wind_speed'],
+                'wind_direction': row['wind_direction'],
+                'result': row['result'],
+                'created_at': row['created_at']
+            })
+        return missions
+
+def get_all_missions():
+    """Get all missions from all users, ordered by most recent first"""
+    with closing(get_db()) as conn:
+        cursor = conn.execute('''
+            SELECT id, user_id, start, end, distance_km, payload_kg, battery, wind_speed, wind_direction, result, created_at
+            FROM missions
+            ORDER BY created_at DESC
+        ''')
+        missions = []
+        for row in cursor.fetchall():
+            missions.append({
+                'id': row['id'],
+                'user_id': row['user_id'],
+                'start': row['start'],
+                'end': row['end'],
+                'distance_km': row['distance_km'],
+                'payload_kg': row['payload_kg'],
+                'battery': row['battery'],
+                'wind_speed': row['wind_speed'],
+                'wind_direction': row['wind_direction'],
+                'result': row['result'],
+                'created_at': row['created_at']
+            })
+        return missions
+
+# initialize database on startup
+init_db()
+
+# JWT Configuration
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', secrets.token_urlsafe(32))
+JWT_ALGORITHM = 'HS256'
+JWT_EXPIRATION_HOURS = 24
 
 def haversine_distance(coord1, coord2):
     R = 6371
@@ -415,15 +632,56 @@ def simulate_drone_on_path(path, steps=50):
     return positions
 
 
-user_db = {
-    "demo@mayday.com": {
-        "id": 1,
-        "email": "demo@mayday.com",
-        "name": "Demo Operator",
-        "role": "Dispatcher",
-        "theme": "dark"
+# user database is now stored in sqlite (see get_user_by_email, create_user, update_user functions above)
+
+# Helper functions for authentication
+def hash_password(password):
+    """Hash a password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password, password_hash):
+    """Verify a password against its hash"""
+    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+
+def generate_token(user):
+    """Generate JWT token for user"""
+    payload = {
+        'user_id': user['id'],
+        'email': user['email'],
+        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
+        'iat': datetime.utcnow()
     }
-}
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+def verify_token(token):
+    """Verify JWT token and return user email"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        return payload.get('email')
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def require_auth(f):
+    """Decorator to require authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        if not token:
+            return jsonify({"error": "No token provided"}), 401
+        
+        email = verify_token(token)
+        if not email:
+            return jsonify({"error": "Invalid or expired token"}), 401
+        
+        user = get_user_by_email(email)
+        if not user:
+            return jsonify({"error": "Invalid or expired token"}), 401
+        
+        request.current_user = user
+        return f(*args, **kwargs)
+    return decorated_function
 
 locations = [
     {"id": "warehouse_1",        "name": "Warehouse 1",          "lat": 34.0407, "lng": -118.2468},
@@ -474,13 +732,55 @@ drones = [
     },
 ]
 
-missions = []  # will fill from front-end
+# missions are now stored in sqlite database (see create_mission, get_missions_by_user, get_all_missions functions)
 
 # --- Routes ---
 
+@app.route("/api/signup", methods=["POST"])
+def signup():
+    """Create a new user account with email and password"""
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    name = (data.get("name") or "").strip()
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+
+    # validate email format
+    if "@" not in email or "." not in email.split("@")[1]:
+        return jsonify({"error": "Invalid email format."}), 400
+
+    # validate password strength
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters long."}), 400
+
+    # check if user already exists
+    existing_user = get_user_by_email(email)
+    if existing_user:
+        return jsonify({"error": "Email already registered. Please login instead."}), 400
+
+    # create new user
+    password_hash = hash_password(password)
+    user = create_user(
+        email=email,
+        name=name or email.split("@")[0].title(),
+        role="Operator",
+        theme="dark",
+        password_hash=password_hash
+    )
+
+    # generate jwt token
+    token = generate_token(user)
+
+    # return user data (without password hash)
+    user_response = {k: v for k, v in user.items() if k != "password_hash"}
+    return jsonify({"token": token, "user": user_response}), 201
+
+
 @app.route("/api/login", methods=["POST"])
 def login():
-    """Simple login: accepts any email/password, but if email isn’t in db, creates a user."""
+    """Authenticate user with email and password"""
     data = request.get_json() or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
@@ -488,45 +788,85 @@ def login():
     if not email or not password:
         return jsonify({"error": "Email and password are required."}), 400
 
-    user = user_db.get(email)
+    user = get_user_by_email(email)
     if not user:
-        user = {
-            "id": len(user_db) + 1,
-            "email": email,
-            "name": email.split("@")[0].title(),
-            "role": "Operator",
-            "theme": "dark"
-        }
-        user_db[email] = user
+        return jsonify({"error": "Invalid email or password."}), 401
 
-    return jsonify({"token": email, "user": user})
+    # Verify password
+    if not verify_password(password, user.get("password_hash", "")):
+        return jsonify({"error": "Invalid email or password."}), 401
+
+    # Generate JWT token
+    token = generate_token(user)
+
+    # Return user data (without password hash)
+    user_response = {k: v for k, v in user.items() if k != "password_hash"}
+    return jsonify({"token": token, "user": user_response})
 
 
 @app.route("/api/me", methods=["GET"])
+@require_auth
 def me():
-    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-    if not token or token not in user_db:
-        return jsonify({"error": "Unauthorized"}), 401
-    return jsonify(user_db[token])
+    user = request.current_user
+    user_response = {k: v for k, v in user.items() if k != "password_hash"}
+    return jsonify(user_response)
 
 
 @app.route("/api/profile", methods=["POST"])
+@require_auth
 def update_profile():
-    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-    if not token or token not in user_db:
-        return jsonify({"error": "Unauthorized"}), 401
-
+    """Update user profile (name and theme)"""
     data = request.get_json() or {}
     name = data.get("name")
     theme = data.get("theme")
 
-    user = user_db[token]
-    if name:
-        user["name"] = name
-    if theme in ("dark", "light"):
-        user["theme"] = theme
+    user = request.current_user
+    email = user["email"]
+    
+    # validate name is provided and not empty
+    if name is not None and len(name.strip()) == 0:
+        return jsonify({"error": "Name cannot be empty"}), 400
+    
+    # update user in database
+    updated_user = update_user(email, name=name.strip() if name else None, theme=theme if theme in ("dark", "light") else None)
+    
+    user_response = {k: v for k, v in updated_user.items() if k != "password_hash"}
+    return jsonify(user_response)
 
-    return jsonify(user)
+
+@app.route("/api/settings", methods=["GET"])
+@require_auth
+def get_settings():
+    """Get user settings"""
+    user = request.current_user
+    return jsonify({
+        "aggressive_battery": user.get("aggressive_battery", False),
+        "strict_wind": user.get("strict_wind", False)
+    })
+
+
+@app.route("/api/settings", methods=["POST"])
+@require_auth
+def update_settings():
+    """Update user settings"""
+    data = request.get_json() or {}
+    aggressive_battery = data.get("aggressive_battery")
+    strict_wind = data.get("strict_wind")
+
+    user = request.current_user
+    email = user["email"]
+    
+    # Update settings in database
+    updated_user = update_user(
+        email,
+        aggressive_battery=aggressive_battery if aggressive_battery is not None else None,
+        strict_wind=strict_wind if strict_wind is not None else None
+    )
+    
+    return jsonify({
+        "aggressive_battery": updated_user.get("aggressive_battery", False),
+        "strict_wind": updated_user.get("strict_wind", False)
+    })
 
 
 @app.route("/api/locations", methods=["GET"])
@@ -540,10 +880,8 @@ def get_drones():
 
 
 @app.route("/api/drones/<int:drone_id>/status", methods=["POST"])
+@require_auth
 def update_drone_status(drone_id):
-    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-    if not token or token not in user_db:
-        return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json() or {}
     new_status = data.get("status")
@@ -575,30 +913,40 @@ def update_drone_status(drone_id):
 
 
 @app.route("/api/missions", methods=["GET"])
+@require_auth
 def get_missions():
-    return jsonify(missions)
+    """Get all missions for the authenticated user"""
+    user = request.current_user
+    user_missions = get_missions_by_user(user['id'])
+    return jsonify(user_missions)
 
 
 @app.route("/api/missions", methods=["POST"])
+@require_auth
 def add_mission():
-    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-    if not token or token not in user_db:
-        return jsonify({"error": "Unauthorized"}), 401
-
+    """Create a new mission for the authenticated user"""
+    user = request.current_user
     data = request.get_json() or {}
-    mission_id = len(missions) + 1
-    mission = {
-        "id": mission_id,
-        "start": data.get("start"),
-        "end": data.get("end"),
-        "distance_km": data.get("distance_km"),
-        "payload_kg": data.get("payload_kg"),
-        "battery": data.get("battery"),
-        "wind_speed": data.get("wind_speed"),
-        "wind_direction": data.get("wind_direction"),
-        "result": data.get("result", "pending")
-    }
-    missions.insert(0, mission)
+    
+    # validate required fields
+    required_fields = ['start', 'end', 'distance_km', 'payload_kg', 'battery', 'wind_speed', 'wind_direction']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"Missing required field: {field}"}), 400
+    
+    # create mission in database
+    mission = create_mission(
+        user_id=user['id'],
+        start=data.get("start"),
+        end=data.get("end"),
+        distance_km=float(data.get("distance_km")),
+        payload_kg=float(data.get("payload_kg")),
+        battery=int(data.get("battery")),
+        wind_speed=float(data.get("wind_speed")),
+        wind_direction=data.get("wind_direction"),
+        result=data.get("result", "pending")
+    )
+    
     return jsonify(mission), 201
 
 

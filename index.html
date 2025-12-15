@@ -40,6 +40,20 @@
       --transition-fast: 0.18s ease-out;
     }
 
+    :root.light-mode {
+      --bg: #f8f9fa;
+      --bg-soft: #e9ecef;
+      --card: #ffffff;
+      --accent: #b91c1c;
+      --accent-soft: rgba(185, 28, 28, 0.1);
+      --accent-strong: #dc2626;
+      --border: #dee2e6;
+      --text: #212529;
+      --muted: #6c757d;
+      --muted-light: #adb5bd;
+      --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.1);
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -56,6 +70,11 @@
       align-items: stretch;
       justify-content: center;
       padding: 20px;
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    :root.light-mode body {
+      background: radial-gradient(circle at top, #e9ecef 0, #f8f9fa 55%);
     }
 
     #app-shell {
@@ -69,6 +88,12 @@
       display: flex;
       overflow: hidden;
       position: relative;
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+
+    :root.light-mode #app-shell {
+      background: linear-gradient(145deg, #ffffff, #f8f9fa);
+      border: 1px solid rgba(0, 0, 0, 0.1);
     }
 
     /* ---------- LOGIN ---------- */
@@ -85,6 +110,11 @@
       flex-direction: column;
       justify-content: space-between;
       background: radial-gradient(circle at top left, #111827 0, #050505 60%);
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .login-panel {
+      background: radial-gradient(circle at top left, #e9ecef 0, #f8f9fa 60%);
     }
 
     .login-header {
@@ -148,6 +178,10 @@
         transform 0.08s ease-out;
     }
 
+    :root.light-mode .field-group input {
+      background: rgba(255, 255, 255, 0.9);
+    }
+
     .field-group input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.5);
@@ -208,9 +242,11 @@
       font-size: 0.7rem;
       text-transform: uppercase;
       letter-spacing: 0.16em;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .pill {
+      background: rgba(255, 255, 255, 0.95);
     }
 
     .pill-dot {
@@ -229,6 +265,11 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .login-side {
+      background: radial-gradient(circle at top, #f1f3f5 0, #f8f9fa 60%);
     }
 
     .side-card {
@@ -237,6 +278,11 @@
       border: 1px solid var(--border);
       padding: 16px;
       box-shadow: 0 14px 35px rgba(0, 0, 0, 0.8);
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .side-card {
+      background: rgba(255, 255, 255, 0.98);
       font-size: 0.82rem;
       color: var(--muted);
       display: flex;
@@ -261,6 +307,11 @@
       align-self: flex-start;
     }
 
+    :root.light-mode .side-tag {
+      color: #991b1b;
+      border: 1px solid rgba(185, 28, 28, 0.3);
+    }
+
     /* ---------- APP MAIN ---------- */
 
     #app-main {
@@ -276,6 +327,11 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .sidebar {
+      background: radial-gradient(circle at top, #ffffff 0, #f8f9fa 60%);
     }
 
     .sidebar-header {
@@ -328,8 +384,17 @@
       border: 1px solid rgba(248, 113, 113, 0.9);
     }
 
+    :root.light-mode .nav-item button.active {
+      color: #991b1b;
+    }
+
     .nav-item button:hover {
       background: rgba(15, 23, 42, 0.95);
+      color: var(--text);
+    }
+
+    :root.light-mode .nav-item button:hover {
+      background: rgba(0, 0, 0, 0.05);
       color: var(--text);
     }
 
@@ -342,6 +407,11 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      transition: border-color 0.3s ease;
+    }
+
+    :root.light-mode .sidebar-footer {
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
     }
 
     .logout-btn {
@@ -360,9 +430,20 @@
         transform 0.08s ease-out;
     }
 
+    :root.light-mode .logout-btn {
+      background: rgba(255, 255, 255, 0.96);
+      color: #991b1b;
+      border: 1px solid rgba(185, 28, 28, 0.3);
+    }
+
     .logout-btn:hover {
       background: rgba(127, 29, 29, 0.7);
       transform: translateY(-0.5px);
+    }
+
+    :root.light-mode .logout-btn:hover {
+      background: rgba(185, 28, 28, 0.1);
+      color: #dc2626;
     }
 
     .content {
@@ -394,6 +475,11 @@
       border-radius: var(--radius-pill);
       background: rgba(15, 23, 42, 0.96);
       border: 1px solid var(--border);
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .user-chip {
+      background: rgba(255, 255, 255, 0.96);
       font-size: 0.82rem;
       display: inline-flex;
       align-items: center;
@@ -466,6 +552,11 @@
       color: #fee2e2;
     }
 
+    :root.light-mode .card-tag {
+      color: #991b1b;
+      border: 1px solid rgba(185, 28, 28, 0.3);
+    }
+
     .dashboard-grid {
       display: grid;
       grid-template-columns: 1.4fr 1.2fr;
@@ -495,8 +586,27 @@
         transform 0.08s ease-out;
     }
 
+    :root.light-mode select,
+    :root.light-mode input[type="number"],
+    :root.light-mode input[type="text"].address-input {
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .address-input {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text);
+      font-size: 0.86rem;
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform 0.08s ease-out, background 0.3s ease;
+    }
+
     select:focus,
-    input[type="number"]:focus {
+    input[type="number"]:focus,
+    input[type="text"]:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.5);
       transform: translateY(-1px);
@@ -514,6 +624,16 @@
       border-radius: 16px;
       border: 1px solid var(--border);
       overflow: hidden;
+    }
+
+    /* leaflet attribution text styling for light mode */
+    :root.light-mode .leaflet-control-attribution {
+      background: rgba(255, 255, 255, 0.8) !important;
+      color: #495057 !important;
+    }
+
+    :root.light-mode .leaflet-control-attribution a {
+      color: #495057 !important;
     }
 
     .status-banner {
@@ -575,6 +695,11 @@
       overflow: hidden;
       border: 1px solid var(--border);
       background: rgba(15, 23, 42, 0.98);
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .table-wrapper {
+      background: rgba(255, 255, 255, 0.98);
     }
 
     table {
@@ -594,6 +719,10 @@
       background: #020617;
     }
 
+    :root.light-mode thead {
+      background: #f1f3f5;
+    }
+
     th {
       text-transform: uppercase;
       letter-spacing: 0.14em;
@@ -603,6 +732,10 @@
 
     tbody tr:nth-child(even) {
       background: rgba(15, 23, 42, 0.96);
+    }
+
+    :root.light-mode tbody tr:nth-child(even) {
+      background: rgba(0, 0, 0, 0.02);
     }
 
     .badge-status {
@@ -641,10 +774,20 @@
         transform 0.08s ease-out;
     }
 
+    :root.light-mode .secondary-btn {
+      background: rgba(255, 255, 255, 0.96);
+      color: var(--muted);
+    }
+
     .secondary-btn:hover {
       background: rgba(31, 41, 55, 1);
       color: var(--text);
       transform: translateY(-0.5px);
+    }
+
+    :root.light-mode .secondary-btn:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text);
     }
 
     /* Drones */
@@ -669,12 +812,21 @@
       color: var(--muted-light);
       font-size: 0.75rem;
       cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    :root.light-mode .tab-btn {
+      background: rgba(255, 255, 255, 0.96);
     }
 
     .tab-btn.active {
       background: var(--accent-soft);
       border-color: rgba(248, 113, 113, 0.8);
       color: #fee2e2;
+    }
+
+    :root.light-mode .tab-btn.active {
+      color: #991b1b;
     }
 
     .note {
@@ -762,10 +914,10 @@
           </div>
 
           <div class="login-main">
-            <h2>Sign in to your console</h2>
-            <p>Track drones, missions, and manage delivery routes in one place.</p>
+            <h2 id="auth-title">Sign in to your console</h2>
+            <p id="auth-subtitle">Track drones, missions, and manage delivery routes in one place.</p>
 
-            <form id="login-form" class="login-form">
+            <form id="login-form" class="login-form" style="display: block;">
               <div class="field-group">
                 <label for="login-email">Email</label>
                 <input id="login-email" type="email" required placeholder="you@example.com" />
@@ -775,11 +927,37 @@
                 <input id="login-password" type="password" required placeholder="••••••••" />
               </div>
               <button type="submit" class="primary-btn">
-                Enter Console
+                Sign In
                 <span>→</span>
               </button>
-              <p class="login-note">
-                
+              <p class="login-note" style="text-align: center; margin-top: 12px;">
+                Don't have an account? <a href="#" id="switch-to-signup" style="color: var(--accent); text-decoration: none; cursor: pointer;">Sign up</a>
+              </p>
+            </form>
+
+            <form id="signup-form" class="login-form" style="display: none;">
+              <div class="field-group">
+                <label for="signup-name">Name</label>
+                <input id="signup-name" type="text" required placeholder="Your name" />
+              </div>
+              <div class="field-group">
+                <label for="signup-email">Email</label>
+                <input id="signup-email" type="email" required placeholder="you@example.com" />
+              </div>
+              <div class="field-group">
+                <label for="signup-password">Password</label>
+                <input id="signup-password" type="password" required placeholder="At least 6 characters" minlength="6" />
+              </div>
+              <div class="field-group">
+                <label for="signup-password-confirm">Confirm Password</label>
+                <input id="signup-password-confirm" type="password" required placeholder="Re-enter password" />
+              </div>
+              <button type="submit" class="primary-btn">
+                Create Account
+                <span>→</span>
+              </button>
+              <p class="login-note" style="text-align: center; margin-top: 12px;">
+                Already have an account? <a href="#" id="switch-to-login" style="color: var(--accent); text-decoration: none; cursor: pointer;">Sign in</a>
               </p>
             </form>
           </div>
@@ -905,11 +1083,33 @@
                 <div class="form-grid">
                   <div class="field-group">
                     <label for="start-location">Start</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                      <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin: 0;">
+                        <input type="radio" name="start-type" value="preset" checked style="margin: 0; width: auto;" />
+                        <span>Preset</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin: 0;">
+                        <input type="radio" name="start-type" value="address" style="margin: 0; width: auto;" />
+                        <span>Address</span>
+                      </label>
+                    </div>
                     <select id="start-location" required></select>
+                    <input id="start-address" type="text" placeholder="Enter address (e.g., 123 Main St, Los Angeles, CA)" class="address-input" style="display: none; margin-top: 8px;" />
                   </div>
                   <div class="field-group">
                     <label for="end-location">Destination</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                      <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin: 0;">
+                        <input type="radio" name="end-type" value="preset" checked style="margin: 0; width: auto;" />
+                        <span>Preset</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem; cursor: pointer; margin: 0;">
+                        <input type="radio" name="end-type" value="address" style="margin: 0; width: auto;" />
+                        <span>Address</span>
+                      </label>
+                    </div>
                     <select id="end-location" required></select>
+                    <input id="end-address" type="text" placeholder="Enter address (e.g., 456 Oak Ave, Santa Monica, CA)" class="address-input" style="display: none; margin-top: 8px;" />
                   </div>
                   <div class="field-group">
                     <label for="payload-weight">Payload (kg)</label>
@@ -967,6 +1167,16 @@
 
         <!-- DRONES -->
         <section id="page-drones" class="page-section">
+          <div class="card" style="margin-bottom: 12px; background: var(--accent-soft); border: 1px solid rgba(248, 113, 113, 0.4);">
+            <p style="margin: 0; color: var(--text); font-size: 0.86rem; line-height: 1.5;">
+              <strong>Note:</strong> This is a mock drone page for demonstration purposes only. We do not have access to actual drones, so there is no real functionality. All data shown is simulated.
+            </p>
+          </div>
+          <style>
+            :root.light-mode #page-drones > .card:first-child p {
+              color: #991b1b;
+            }
+          </style>
           <div class="drones-layout">
             <div class="card">
               <div class="card-header">
@@ -974,7 +1184,7 @@
                   <h3>Drones currently out</h3>
                   <p>Drones that are already in flight.</p>
                 </div>
-                <span class="card-tag">Real-time view</span>
+                <span class="card-tag">Mock view</span>
               </div>
               <div class="table-wrapper">
                 <table>
@@ -1121,7 +1331,7 @@
                 <label for="profile-theme">Theme</label>
                 <select id="profile-theme">
                   <option value="dark">Dark</option>
-                  <option value="light">Light (label only)</option>
+                  <option value="light">Light</option>
                 </select>
               </div>
               <p class="note">
@@ -1183,6 +1393,11 @@
       const loginView = document.getElementById("login-view");
       const appMain = document.getElementById("app-main");
       const loginForm = document.getElementById("login-form");
+      const signupForm = document.getElementById("signup-form");
+      const switchToSignup = document.getElementById("switch-to-signup");
+      const switchToLogin = document.getElementById("switch-to-login");
+      const authTitle = document.getElementById("auth-title");
+      const authSubtitle = document.getElementById("auth-subtitle");
       const logoutBtn = document.getElementById("logout-btn");
       const navButtons = document.querySelectorAll(".nav-item button");
       const pageTitle = document.getElementById("page-title");
@@ -1236,6 +1451,8 @@
         try {
           await fetchCurrentUser();
           await Promise.all([fetchLocations(), fetchDrones(), fetchMissions()]);
+          // load settings after user data is fetched
+          await loadSettings();
         } catch (err) {
           console.error(err);
           alert("Could not contact backend. Is Flask running?");
@@ -1252,10 +1469,13 @@
         profileNameEl.value = AppState.user.name || "";
         profileRoleEl.value = AppState.user.role || "Operator";
         profileThemeEl.value = AppState.user.theme || "dark";
+        // apply theme on page load
+        applyTheme(AppState.user.theme || "dark");
 
         // Initialize map & selects
         initializeMap();
         populateLocationSelects();
+        setupLocationToggles();
 
         // Render drones & missions & analytics
         renderDrones();
@@ -1309,12 +1529,84 @@
 
       // ------------- LOGIN -------------
 
+      // Toggle between login and signup forms
+      switchToSignup.addEventListener("click", (e) => {
+        e.preventDefault();
+        loginForm.style.display = "none";
+        signupForm.style.display = "block";
+        authTitle.textContent = "Create your account";
+        authSubtitle.textContent = "Join Mayday to start managing drone delivery operations.";
+      });
+
+      switchToLogin.addEventListener("click", (e) => {
+        e.preventDefault();
+        signupForm.style.display = "none";
+        loginForm.style.display = "block";
+        authTitle.textContent = "Sign in to your console";
+        authSubtitle.textContent = "Track drones, missions, and manage delivery routes in one place.";
+      });
+
+      // Signup form handler
+      signupForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("signup-name").value.trim();
+        const email = document.getElementById("signup-email").value.trim().toLowerCase();
+        const password = document.getElementById("signup-password").value;
+        const passwordConfirm = document.getElementById("signup-password-confirm").value;
+
+        if (!name || !email || !password || !passwordConfirm) {
+          alert("Please fill in all fields.");
+          return;
+        }
+
+        if (password.length < 6) {
+          alert("Password must be at least 6 characters long.");
+          return;
+        }
+
+        if (password !== passwordConfirm) {
+          alert("Passwords do not match.");
+          return;
+        }
+
+        try {
+          const res = await fetch(API_BASE + "/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, email, password }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            alert(data.error || "Signup failed. Please try again.");
+            return;
+          }
+
+          AppState.token = data.token;
+          AppState.user = data.user;
+          localStorage.setItem("maydayToken", data.token);
+          // apply theme before showing app
+          if (data.user && data.user.theme) {
+            applyTheme(data.user.theme);
+          }
+          await showApp();
+        } catch (err) {
+          console.error("Signup error:", err);
+          alert("Signup failed. Please check your connection and try again.");
+        }
+      });
+
+      // Login form handler
       loginForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const email = document.getElementById("login-email").value.trim();
-        const password = document.getElementById("login-password").value.trim();
+        const email = document.getElementById("login-email").value.trim().toLowerCase();
+        const password = document.getElementById("login-password").value;
 
-        if (!email || !password) return;
+        if (!email || !password) {
+          alert("Please enter both email and password.");
+          return;
+        }
 
         try {
           const res = await fetch(API_BASE + "/login", {
@@ -1322,15 +1614,22 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password }),
           });
+
+          const data = await res.json();
+
           if (!res.ok) {
-            alert("Login failed. Check backend.");
+            alert(data.error || "Login failed. Please check your credentials.");
             return;
           }
-          const data = await res.json();
+
           AppState.token = data.token;
           AppState.user = data.user;
           localStorage.setItem("maydayToken", data.token);
-          showApp();
+          // apply theme before showing app
+          if (data.user && data.user.theme) {
+            applyTheme(data.user.theme);
+          }
+          await showApp();
         } catch (err) {
           console.error(err);
           alert("Could not reach backend. Make sure Flask is running.");
@@ -1430,6 +1729,92 @@
         return AppState.locations.find((loc) => loc.id === id);
       }
 
+      // Setup location type toggles
+      function setupLocationToggles() {
+        const startPresetRadio = document.querySelector('input[name="start-type"][value="preset"]');
+        const startAddressRadio = document.querySelector('input[name="start-type"][value="address"]');
+        const endPresetRadio = document.querySelector('input[name="end-type"][value="preset"]');
+        const endAddressRadio = document.querySelector('input[name="end-type"][value="address"]');
+        const startSelect = document.getElementById("start-location");
+        const startAddress = document.getElementById("start-address");
+        const endSelect = document.getElementById("end-location");
+        const endAddress = document.getElementById("end-address");
+
+        function toggleStartInputs() {
+          if (startPresetRadio.checked) {
+            startSelect.style.display = "block";
+            startSelect.required = true;
+            startAddress.style.display = "none";
+            startAddress.required = false;
+            startAddress.value = "";
+          } else {
+            startSelect.style.display = "none";
+            startSelect.required = false;
+            startAddress.style.display = "block";
+            startAddress.required = true;
+          }
+        }
+
+        function toggleEndInputs() {
+          if (endPresetRadio.checked) {
+            endSelect.style.display = "block";
+            endSelect.required = true;
+            endAddress.style.display = "none";
+            endAddress.required = false;
+            endAddress.value = "";
+          } else {
+            endSelect.style.display = "none";
+            endSelect.required = false;
+            endAddress.style.display = "block";
+            endAddress.required = true;
+          }
+        }
+
+        startPresetRadio.addEventListener("change", toggleStartInputs);
+        startAddressRadio.addEventListener("change", toggleStartInputs);
+        endPresetRadio.addEventListener("change", toggleEndInputs);
+        endAddressRadio.addEventListener("change", toggleEndInputs);
+      }
+
+      // Geocoding function using OpenStreetMap Nominatim API
+      async function geocodeAddress(address) {
+        if (!address || address.trim() === "") {
+          throw new Error("Address cannot be empty");
+        }
+
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+        
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mayday-Drone-Pathfinding/1.0' // Required by Nominatim
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Geocoding API returned status ${response.status}`);
+          }
+
+          const data = await response.json();
+          
+          if (!data || data.length === 0) {
+            throw new Error("Address not found. Please try a more specific address.");
+          }
+
+          const result = data[0];
+          return {
+            lat: parseFloat(result.lat),
+            lng: parseFloat(result.lon),
+            display_name: result.display_name
+          };
+        } catch (error) {
+          if (error.message.includes("not found")) {
+            throw error;
+          }
+          throw new Error(`Failed to geocode address: ${error.message}`);
+        }
+      }
+
       function drawRoute(start, end, calculatedPath = null) {
         if (!mapInstance) return;
 
@@ -1473,18 +1858,78 @@
       missionForm.addEventListener("submit", async (e) => {
         e.preventDefault();
 
-        const startId = document.getElementById("start-location").value;
-        const endId = document.getElementById("end-location").value;
         const payload = parseFloat(document.getElementById("payload-weight").value);
         const battery = parseFloat(document.getElementById("battery-health").value);
         const windSpeed = parseFloat(document.getElementById("wind-speed").value);
         const windDirection = document.getElementById("wind-direction").value;
 
-        const start = getLocationById(startId);
-        const end = getLocationById(endId);
+        // Determine if using preset or address for start
+        const startType = document.querySelector('input[name="start-type"]:checked').value;
+        let start = null;
+        let startName = "";
 
-        if (!start || !end || start.id === end.id) {
-          showMissionStatus("Please choose two different locations.", false);
+        if (startType === "preset") {
+          const startId = document.getElementById("start-location").value;
+          start = getLocationById(startId);
+          if (!start) {
+            showMissionStatus("Please select a start location.", false);
+            return;
+          }
+          startName = start.name;
+        } else {
+          const startAddress = document.getElementById("start-address").value.trim();
+          if (!startAddress) {
+            showMissionStatus("Please enter a start address.", false);
+            return;
+          }
+          try {
+            showMissionStatus("Geocoding start address...", null, true);
+            const geocoded = await geocodeAddress(startAddress);
+            start = { lat: geocoded.lat, lng: geocoded.lng, name: geocoded.display_name };
+            startName = geocoded.display_name;
+          } catch (error) {
+            showMissionStatus(`Error: ${error.message}`, false);
+            return;
+          }
+        }
+
+        // Determine if using preset or address for end
+        const endType = document.querySelector('input[name="end-type"]:checked').value;
+        let end = null;
+        let endName = "";
+
+        if (endType === "preset") {
+          const endId = document.getElementById("end-location").value;
+          end = getLocationById(endId);
+          if (!end) {
+            showMissionStatus("Please select a destination location.", false);
+            return;
+          }
+          endName = end.name;
+        } else {
+          const endAddress = document.getElementById("end-address").value.trim();
+          if (!endAddress) {
+            showMissionStatus("Please enter a destination address.", false);
+            return;
+          }
+          try {
+            if (startType === "address") {
+              showMissionStatus("Geocoding destination address...", null, true);
+            } else {
+              showMissionStatus("Geocoding destination address...", null, true);
+            }
+            const geocoded = await geocodeAddress(endAddress);
+            end = { lat: geocoded.lat, lng: geocoded.lng, name: geocoded.display_name };
+            endName = geocoded.display_name;
+          } catch (error) {
+            showMissionStatus(`Error: ${error.message}`, false);
+            return;
+          }
+        }
+
+        // Check if start and end are the same
+        if (start.lat === end.lat && start.lng === end.lng) {
+          showMissionStatus("Start and destination cannot be the same location.", false);
           return;
         }
 
@@ -1586,8 +2031,8 @@
                 const result = await apiRequest("/missions", {
                   method: "POST",
                   body: JSON.stringify({
-                    start: start.name,
-                    end: end.name,
+                    start: startName,
+                    end: endName,
                     distance_km: distance.toFixed(2),
                     payload_kg: payload,
                     battery,
@@ -1630,8 +2075,8 @@
                 const result = await apiRequest("/missions", {
                   method: "POST",
                   body: JSON.stringify({
-                    start: start.name,
-                    end: end.name,
+                    start: startName,
+                    end: endName,
                     distance_km: distance.toFixed(2),
                     payload_kg: payload,
                     battery,
@@ -1829,9 +2274,25 @@
 
       // ------------- PROFILE -------------
 
+      // apply theme to the page
+      function applyTheme(theme) {
+        const root = document.documentElement;
+        if (theme === "light") {
+          root.classList.add("light-mode");
+        } else {
+          root.classList.remove("light-mode");
+        }
+      }
+
       profileSaveBtn.addEventListener("click", async () => {
         const newName = profileNameEl.value.trim();
         const newTheme = profileThemeEl.value;
+        
+        if (!newName) {
+          alert("Display name cannot be empty.");
+          return;
+        }
+        
         try {
           const updated = await apiRequest("/profile", {
             method: "POST",
@@ -1840,22 +2301,66 @@
           AppState.user = updated;
           userName.textContent = updated.name || "Operator";
           userAvatar.textContent = (updated.name || "O").charAt(0).toUpperCase();
-          alert("Profile saved (server-side).");
+          // update profile fields to reflect saved values
+          profileNameEl.value = updated.name || "";
+          profileThemeEl.value = updated.theme || "dark";
+          // apply theme immediately
+          applyTheme(updated.theme || "dark");
+          alert("Profile saved successfully.");
         } catch (err) {
           console.error(err);
-          alert("Could not save profile.");
+          const errorMsg = err.message || "Could not save profile.";
+          alert(errorMsg.includes("error") ? errorMsg : "Could not save profile.");
         }
       });
 
-      // ------------- SETTINGS (FRONT-END ONLY) -------------
+      // apply theme when user changes it in the selector
+      profileThemeEl.addEventListener("change", () => {
+        applyTheme(profileThemeEl.value);
+      });
 
-      settingAggressiveBattery.addEventListener("change", () => {
+      // ------------- SETTINGS -------------
+
+      // load settings on page load
+      async function loadSettings() {
+        try {
+          const settings = await apiRequest("/settings", { method: "GET" });
+          AppState.settings.aggressiveBattery = settings.aggressive_battery || false;
+          AppState.settings.strictWind = settings.strict_wind || false;
+          settingAggressiveBattery.checked = AppState.settings.aggressiveBattery;
+          settingStrictWind.checked = AppState.settings.strictWind;
+        } catch (err) {
+          console.error("Could not load settings:", err);
+        }
+      }
+
+      // save settings when changed
+      async function saveSettings() {
+        try {
+          await apiRequest("/settings", {
+            method: "POST",
+            body: JSON.stringify({
+              aggressive_battery: AppState.settings.aggressiveBattery,
+              strict_wind: AppState.settings.strictWind
+            }),
+          });
+        } catch (err) {
+          console.error("Could not save settings:", err);
+        }
+      }
+
+      settingAggressiveBattery.addEventListener("change", async () => {
         AppState.settings.aggressiveBattery = settingAggressiveBattery.checked;
+        await saveSettings();
       });
 
-      settingStrictWind.addEventListener("change", () => {
+      settingStrictWind.addEventListener("change", async () => {
         AppState.settings.strictWind = settingStrictWind.checked;
+        await saveSettings();
       });
+      
+      // load settings when app loads
+      loadSettings();
 
       // Manual wind toggle
       const manualWindToggle = document.getElementById("manual-wind-toggle");
