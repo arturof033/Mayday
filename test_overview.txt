@@ -1,0 +1,21 @@
+tests
+
+unit tests - validate functions, algorithms, and calculations.
+  - calculated optimal path distance is within 30% of the true direct route.
+  - the pathfinding algorithm clearly avoids known obstacles.
+  - weather api response is clearly displayed onto the frontend.
+
+integration tests - validate system component interaction.
+  - frontend-backend api communication.
+  - a path is able to be calculated from end to end.
+  - mission submission workflow is able to be completed.
+
+system tests - validate user workflow.
+  - full user journey (login -> mission -> results).
+  - error handling (api failures, invalid inputs).
+  - cors and authentication.
+
+performance tests - validate performance of the system.
+  - path calculation time (< 30s).
+  - api response times.
+  - map rendering performance.

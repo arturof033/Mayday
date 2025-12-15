@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 import sqlite3
 from contextlib import closing
+import time
+import joblib
 
 app = Flask(__name__)
 
@@ -51,6 +53,7 @@ def init_db():
                 password_hash TEXT NOT NULL,
                 aggressive_battery INTEGER DEFAULT 0,
                 strict_wind INTEGER DEFAULT 0,
+                feasibility_mode TEXT NOT NULL DEFAULT 'model',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -62,6 +65,10 @@ def init_db():
             pass  # column already exists
         try:
             conn.execute('ALTER TABLE users ADD COLUMN strict_wind INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN feasibility_mode TEXT DEFAULT 'model'")
         except sqlite3.OperationalError:
             pass  # column already exists
         
@@ -99,7 +106,7 @@ def get_user_by_email(email):
     """Get user by email from database"""
     with closing(get_db()) as conn:
         cursor = conn.execute(
-            'SELECT id, email, name, role, theme, password_hash, aggressive_battery, strict_wind FROM users WHERE email = ?',
+            'SELECT id, email, name, role, theme, password_hash, aggressive_battery, strict_wind, feasibility_mode FROM users WHERE email = ?',
             (email,)
         )
         row = cursor.fetchone()
@@ -112,7 +119,8 @@ def get_user_by_email(email):
                 'theme': row['theme'],
                 'password_hash': row['password_hash'],
                 'aggressive_battery': bool(row['aggressive_battery']),
-                'strict_wind': bool(row['strict_wind'])
+                'strict_wind': bool(row['strict_wind']),
+                'feasibility_mode': row['feasibility_mode'] if 'feasibility_mode' in row.keys() else 'model'
             }
         return None
 
@@ -120,8 +128,8 @@ def create_user(email, name, role, theme, password_hash):
     """Create a new user in the database"""
     with closing(get_db()) as conn:
         cursor = conn.execute('''
-            INSERT INTO users (email, name, role, theme, password_hash, aggressive_battery, strict_wind)
-            VALUES (?, ?, ?, ?, ?, 0, 0)
+            INSERT INTO users (email, name, role, theme, password_hash, aggressive_battery, strict_wind, feasibility_mode)
+            VALUES (?, ?, ?, ?, ?, 0, 0, 'model')
         ''', (email, name, role, theme, password_hash))
         conn.commit()
         user_id = cursor.lastrowid
@@ -132,10 +140,11 @@ def create_user(email, name, role, theme, password_hash):
             'role': role,
             'theme': theme,
             'aggressive_battery': False,
-            'strict_wind': False
+            'strict_wind': False,
+            'feasibility_mode': 'model'
         }
 
-def update_user(email, name=None, theme=None, aggressive_battery=None, strict_wind=None):
+def update_user(email, name=None, theme=None, aggressive_battery=None, strict_wind=None, feasibility_mode=None):
     """Update user information in the database"""
     with closing(get_db()) as conn:
         if name is not None:
@@ -146,6 +155,11 @@ def update_user(email, name=None, theme=None, aggressive_battery=None, strict_wi
             conn.execute('UPDATE users SET aggressive_battery = ? WHERE email = ?', (1 if aggressive_battery else 0, email))
         if strict_wind is not None:
             conn.execute('UPDATE users SET strict_wind = ? WHERE email = ?', (1 if strict_wind else 0, email))
+        if feasibility_mode is not None:
+            conn.execute(
+                'UPDATE users SET feasibility_mode = ? WHERE email = ?',
+                (feasibility_mode if feasibility_mode in ("rule", "model") else "model", email)
+            )
         conn.commit()
         return get_user_by_email(email)
 
@@ -222,8 +236,39 @@ def get_all_missions():
             })
         return missions
 
-# initialize database on startup
+# initialize database and ml model on startup
 init_db()
+
+# --- Feasibility model loading ---
+
+FEASIBILITY_MODEL = None
+FEASIBILITY_MODEL_LOADED = False
+
+
+def load_feasibility_model():
+    """Load the scikit-learn feasibility model if available."""
+    global FEASIBILITY_MODEL, FEASIBILITY_MODEL_LOADED
+    model_path = os.path.join(os.path.dirname(__file__), "feasibility_nn_model.pkl")
+    try:
+        if os.path.exists(model_path):
+            start_time = time.perf_counter()
+            FEASIBILITY_MODEL = joblib.load(model_path)
+            FEASIBILITY_MODEL_LOADED = True
+            elapsed = time.perf_counter() - start_time
+            print(f"loaded feasibility model from {model_path} in {elapsed:.2f}s")
+        else:
+            print(f"feasibility model file not found at {model_path}; using rule-based feasibility.")
+            FEASIBILITY_MODEL = None
+            FEASIBILITY_MODEL_LOADED = False
+    except Exception as e:
+        print(f"could not load feasibility model: {e}")
+        import traceback
+        print(traceback.format_exc())
+        FEASIBILITY_MODEL = None
+        FEASIBILITY_MODEL_LOADED = False
+
+
+load_feasibility_model()
 
 # JWT Configuration
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', secrets.token_urlsafe(32))
@@ -241,9 +286,14 @@ def haversine_distance(coord1, coord2):
     return R * c
 
 def get_weather_for_path(path):
-    """Fetch weather data for the path and calculate average wind speed and direction relative to path"""
+    """fetch weather data for the path and calculate average wind speed and direction relative to path"""
     if not path or len(path) < 2:
-        return {"wind_speed": 12, "wind_direction": "calm"}
+        return {
+            "wind_speed": 12,
+            "wind_direction": "calm",
+            "weather_api_failed": False,
+            "weather_error": None
+        }
     
     # get weather for midpoint of path
     mid_idx = len(path) // 2
@@ -268,7 +318,10 @@ def get_weather_for_path(path):
         api_key = "333b93885e9d224a90c1e0e7e1630e75"
         if api_key:
             weather_url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+            start_time = time.perf_counter()
             response = requests.get(weather_url, timeout=5)
+            elapsed = time.perf_counter() - start_time
+            print(f"weather api call took {elapsed:.2f}s (status {response.status_code})")
             
             if response.status_code == 200:
                 data = response.json()
@@ -298,20 +351,33 @@ def get_weather_for_path(path):
                     else:
                         direction = "crosswind"
                 
-                print(f"Weather fetched: speed={wind_speed_kmh:.1f} km/h, direction={direction}, deg={wind_deg}")
+                print(f"weather fetched: speed={wind_speed_kmh:.1f} km/h, direction={direction}, deg={wind_deg}")
                 return {
                     "wind_speed": round(wind_speed_kmh),
-                    "wind_direction": direction
+                    "wind_direction": direction,
+                    "weather_api_failed": False,
+                    "weather_error": None
                 }
             else:
-                print(f"Weather API returned status {response.status_code}: {response.text[:200]}")
+                print(f"weather api returned status {response.status_code}: {response.text[:200]}")
+                return {
+                    "wind_speed": 12,
+                    "wind_direction": "calm",
+                    "weather_api_failed": True,
+                    "weather_error": f"weather api returned status {response.status_code}"
+                }
     except Exception as e:
-        print(f"Error fetching weather: {e}")
+        print(f"error fetching weather: {e}")
         import traceback
         print(traceback.format_exc())
     
-    # Fallback: return default values
-    return {"wind_speed": 12, "wind_direction": "calm"}
+    # fallback: return default values
+    return {
+        "wind_speed": 12,
+        "wind_direction": "calm",
+        "weather_api_failed": True,
+        "weather_error": "weather api failed, using default wind values"
+    }
 
 def get_osm_obstacles(start, end, buffer=0.05):
     min_lat = min(start[0], end[0]) - buffer
@@ -337,14 +403,16 @@ def get_osm_obstacles(start, end, buffer=0.05):
     out geom;
     """
     
-    # retry logic for API calls
+    # retry logic for api calls
     max_retries = 3
-    import time
     last_error = None
     
     for attempt in range(max_retries):
         try:
+            start_time = time.perf_counter()
             response = requests.post(overpass_url, data=query, timeout=25)
+            elapsed = time.perf_counter() - start_time
+            print(f"overpass api attempt {attempt + 1} took {elapsed:.2f}s (status {response.status_code})")
             if response.status_code == 200:
                 data = response.json()
                 obstacles = []
@@ -632,6 +700,121 @@ def simulate_drone_on_path(path, steps=50):
     return positions
 
 
+# --- Feasibility evaluation (rule + model) ---
+
+WIND_DIR_MAP = {
+    "tailwind": -1.0,
+    "calm": 0.0,
+    "crosswind": 1.0,
+    "headwind": 2.0,
+}
+
+
+def evaluate_feasibility_rule(distance_km, payload_kg, battery_percent, wind_speed, wind_direction,
+                              aggressive_battery=False, strict_wind=False):
+    """
+    Mirror the frontend rule-based feasibility check so we can fall back to it or use it directly.
+    """
+    cost = distance_km * 0.5 + payload_kg * 0.8 + wind_speed * 0.25
+
+    if aggressive_battery:
+        cost *= 1.15
+
+    if strict_wind and wind_direction == "headwind" and wind_speed > 20:
+        return {
+            "success": False,
+            "reason": "strict wind rule: headwind above 20 km/h blocks the mission.",
+        }
+
+    margin = battery_percent - cost
+    success = margin > 12 and battery_percent > 35
+
+    if success:
+        reason = "battery margin is above the safety threshold. mission is likely to succeed."
+    else:
+        reason = "battery margin or health is too low. the drone might not make a safe return."
+
+    return {"success": success, "reason": reason}
+
+
+def evaluate_feasibility(distance_km, payload_kg, battery_percent, wind_speed, wind_direction,
+                         aggressive_battery=False, strict_wind=False, feasibility_mode="model"):
+    """
+    Top-level feasibility evaluation that chooses between the neural network model
+    and the rule-based system, with automatic fallback to the rule if the model
+    is unavailable or raises an error.
+    """
+    mode = (feasibility_mode or "model").lower()
+    use_model = mode == "model" and FEASIBILITY_MODEL is not None and FEASIBILITY_MODEL_LOADED
+
+    if use_model:
+        # apply strict_wind rule as a hard override before model evaluation
+        if strict_wind and wind_direction == "headwind" and wind_speed > 20:
+            return {
+                "success": False,
+                "reason": "strict wind rule: headwind above 20 km/h blocks the mission (overrides model).",
+                "mode_used": "model",
+            }
+        
+        try:
+            # apply aggressive_battery setting by reducing effective battery for model input
+            effective_battery = battery_percent
+            if aggressive_battery:
+                # reduce battery by 15% to make model more conservative
+                effective_battery = battery_percent * 0.85
+            
+            # encode inputs for the scikit-learn pipeline
+            wind_dir_encoded = WIND_DIR_MAP.get(wind_direction or "calm", 0.0)
+            X = np.array([[float(distance_km),
+                           float(payload_kg),
+                           float(wind_speed),
+                           float(wind_dir_encoded),
+                           float(effective_battery)]])
+
+            proba = None
+            if hasattr(FEASIBILITY_MODEL, "predict_proba"):
+                proba = FEASIBILITY_MODEL.predict_proba(X)[0][1]
+                success = proba >= 0.5
+            else:
+                pred = FEASIBILITY_MODEL.predict(X)[0]
+                success = bool(pred)
+
+            if success:
+                reason = "neural network feasibility model predicts this mission is likely to succeed."
+            else:
+                reason = "neural network feasibility model predicts high risk for this mission."
+
+            if proba is not None:
+                reason += f" model confidence (success class): {proba:.2f}."
+            
+            # note if settings affected the evaluation
+            if aggressive_battery:
+                reason += " aggressive battery setting applied (battery reduced by 15% for model input)."
+
+            return {
+                "success": success,
+                "reason": reason,
+                "mode_used": "model",
+            }
+        except Exception as e:
+            print(f"error during feasibility model evaluation, falling back to rule-based logic: {e}")
+            import traceback
+            print(traceback.format_exc())
+
+    # default / fallback: rule-based evaluation
+    rule_result = evaluate_feasibility_rule(
+        distance_km,
+        payload_kg,
+        battery_percent,
+        wind_speed,
+        wind_direction,
+        aggressive_battery=aggressive_battery,
+        strict_wind=strict_wind,
+    )
+    rule_result["mode_used"] = "rule"
+    return rule_result
+
+
 # user database is now stored in sqlite (see get_user_by_email, create_user, update_user functions above)
 
 # Helper functions for authentication
@@ -841,7 +1024,8 @@ def get_settings():
     user = request.current_user
     return jsonify({
         "aggressive_battery": user.get("aggressive_battery", False),
-        "strict_wind": user.get("strict_wind", False)
+        "strict_wind": user.get("strict_wind", False),
+        "feasibility_mode": user.get("feasibility_mode", "model")
     })
 
 
@@ -852,6 +1036,7 @@ def update_settings():
     data = request.get_json() or {}
     aggressive_battery = data.get("aggressive_battery")
     strict_wind = data.get("strict_wind")
+    feasibility_mode = data.get("feasibility_mode")
 
     user = request.current_user
     email = user["email"]
@@ -860,12 +1045,14 @@ def update_settings():
     updated_user = update_user(
         email,
         aggressive_battery=aggressive_battery if aggressive_battery is not None else None,
-        strict_wind=strict_wind if strict_wind is not None else None
+        strict_wind=strict_wind if strict_wind is not None else None,
+        feasibility_mode=feasibility_mode if feasibility_mode in ("rule", "model") else None
     )
     
     return jsonify({
         "aggressive_battery": updated_user.get("aggressive_battery", False),
-        "strict_wind": updated_user.get("strict_wind", False)
+        "strict_wind": updated_user.get("strict_wind", False),
+        "feasibility_mode": updated_user.get("feasibility_mode", "model")
     })
 
 
@@ -950,6 +1137,38 @@ def add_mission():
     return jsonify(mission), 201
 
 
+@app.route("/api/feasibility", methods=["POST"])
+@require_auth
+def api_feasibility():
+    """Evaluate mission feasibility using either the ML model or the rule-based logic."""
+    data = request.get_json() or {}
+    try:
+        distance_km = float(data.get("distance_km"))
+        payload_kg = float(data.get("payload_kg"))
+        battery_percent = float(data.get("battery_percent"))
+        wind_speed = float(data.get("wind_speed"))
+        wind_direction = (data.get("wind_direction") or "calm").lower()
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid or missing numeric fields for feasibility evaluation"}), 400
+
+    user = request.current_user
+    aggressive_battery = user.get("aggressive_battery", False)
+    strict_wind = user.get("strict_wind", False)
+    feasibility_mode = user.get("feasibility_mode", "model")
+
+    result = evaluate_feasibility(
+        distance_km,
+        payload_kg,
+        battery_percent,
+        wind_speed,
+        wind_direction,
+        aggressive_battery=aggressive_battery,
+        strict_wind=strict_wind,
+        feasibility_mode=feasibility_mode,
+    )
+    return jsonify(result)
+
+
 @app.route("/api/path", methods=["GET"])
 def get_path():
     try:
@@ -959,12 +1178,12 @@ def get_path():
         end_lng = request.args.get("end_lng", type=float)
         
         if not all([start_lat, start_lng, end_lat, end_lng]):
-            return jsonify({"error": "Start and end coordinates are required"}), 400
+            return jsonify({"error": "start and end coordinates are required"}), 400
         
         start = [start_lat, start_lng]
         end = [end_lat, end_lng]
         
-        # check if weather API should be used
+        # check if weather api should be used
         use_weather = request.args.get("use_weather", "true").lower() == "true"
         
         obstacles, api_error = get_osm_obstacles(start, end)
@@ -977,24 +1196,40 @@ def get_path():
                 "api_failed": True
             }), 503
         
-        print(f"Found {len(obstacles)} obstacles")
+        print(f"found {len(obstacles)} obstacles")
         
+        path_calc_start = time.perf_counter()
         if obstacles:
             route, avoided_obstacles = find_optimal_drone_path(start, end, obstacles)
-            print(f"Path calculated with {len(route)} waypoints, avoided {len(avoided_obstacles)} obstacles")
+            print(f"path calculated with {len(route)} waypoints, avoided {len(avoided_obstacles)} obstacles")
         else:
             route, avoided_obstacles = [start, end], []
-            print("No obstacles found, using direct path")
+            print("no obstacles found, using direct path")
         
         route = simulate_drone_on_path(route, steps=50)
-        print(f"Interpolated path has {len(route)} points")
+        path_calc_elapsed = time.perf_counter() - path_calc_start
+        print(f"interpolated path has {len(route)} points")
+        print(f"path calculation (waypoints + interpolation) took {path_calc_elapsed:.2f}s")
         
         total_distance = sum(haversine_distance(route[i-1], route[i]) for i in range(1, len(route)))
+        direct_distance = haversine_distance(start, end)
+        deviation_pct = ((total_distance - direct_distance) / direct_distance * 100) if direct_distance > 0 else 0.0
         
-        # calculate average wind along the path only if use_weather is True
+        print(
+            f"distance check -> direct: {direct_distance:.2f} km, "
+            f"path: {total_distance:.2f} km, "
+            f"deviation: {deviation_pct:.1f}%"
+        )
+        
+        if deviation_pct > 30:
+            print(f"warning: path deviation is {deviation_pct:.1f}% longer than direct route")
+        
+        # calculate average wind along the path only if use_weather is true
         response_data = {
             "path": route,
             "distance_km": round(total_distance, 2),
+            "direct_distance_km": round(direct_distance, 2),
+            "deviation_pct": round(deviation_pct, 2),
             "avoided_obstacles": len(avoided_obstacles),
             "obstacles_found": len(obstacles),
             "waypoints": len(route),
@@ -1005,18 +1240,56 @@ def get_path():
             wind_data = get_weather_for_path(route)
             response_data["wind_speed"] = wind_data.get("wind_speed", 12)
             response_data["wind_direction"] = wind_data.get("wind_direction", "calm")
+            response_data["weather_api_failed"] = wind_data.get("weather_api_failed", False)
+            response_data["weather_error"] = wind_data.get("weather_error")
         else:
             # dont include wind data when manual mode is enabled
             response_data["wind_speed"] = None
             response_data["wind_direction"] = None
+            response_data["weather_api_failed"] = False
+            response_data["weather_error"] = None
         
         return jsonify(response_data)
     except Exception as e:
         import traceback
-        print(f"Pathfinding error: {e}")
+        print(f"pathfinding error: {e}")
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 
+def print_test_overview():
+    """print a simple test checklist to the console and write it to a file"""
+    tests_text = """
+tests
+
+unit tests - validate functions, algorithms, and calculations.
+  - calculated optimal path distance is within 30% of the true direct route.
+  - the pathfinding algorithm clearly avoids known obstacles.
+  - weather api response is clearly displayed onto the frontend.
+
+integration tests - validate system component interaction.
+  - frontend-backend api communication.
+  - a path is able to be calculated from end to end.
+  - mission submission workflow is able to be completed.
+
+system tests - validate user workflow.
+  - full user journey (login -> mission -> results).
+  - error handling (api failures, invalid inputs).
+  - cors and authentication.
+
+performance tests - validate performance of the system.
+  - path calculation time (< 30s).
+  - api response times.
+  - map rendering performance.
+""".strip("\n")
+    print(tests_text)
+    try:
+        with open("test_overview.txt", "w", encoding="utf-8") as f:
+            f.write(tests_text + "\n")
+    except Exception as e:
+        print(f"could not write test_overview.txt: {e}")
+
+
 if __name__ == "__main__":
+    print_test_overview()
     app.run(debug=True)

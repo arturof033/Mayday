@@ -1,13 +1,9 @@
 
 <br />
 <div align="center">
-<a href="https://github.com/arturof033/Mayday">
-</a>
-
   <h3 align="center">Mayday</h3>
-
   <p align="center">
-    Drone Path Recommendation System
+    Drone mission feasibility and path recommendation console
     <br />
     <br />
     <a href="https://github.com/arturof033/Mayday/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
@@ -16,58 +12,162 @@
   </p>
 </div>
 
-## Description
+## Overview
 
-&ensp;&ensp;&ensp;&ensp; 
-Mayday is a web-based theoretical recommender system that recommends routes for 
-drone delivery operations based on various variables. The purpose of Mayday is to 
-fill in the gaps of other drone routing services, which assume perfect conditions.
-Mayday aims to be a drone delivery recommendation system that incorporates weather 
-conditions (rain, wind, temperature), payload specifications (weight, size), battery 
-health, and delivery urgency into the recommendation process.
+Mayday is a web-based console that helps operators evaluate **drone delivery missions** and visualize routes.
+It focuses on mission feasibility under realistic conditions instead of assuming perfect weather and battery.
 
-&ensp;&ensp;&ensp;&ensp; 
-Mayday will use machine learning models with all the variables in place in order
-to make decisions on how feasible a mission is. It will allow operators to view
-various routes and reroute the drone or cancel the mission if necessary. 
-Operators can interact with MayDay through a web dashboard, which will display
-live map tracking of drones, weather overlays, alerts, and other tools.
+The system:
+- Calculates paths between locations while **avoiding obstacles** (using OpenStreetMap / Overpass).
+- Fetches **weather data** (wind speed and direction) from OpenWeatherMap.
+- Evaluates whether a mission is **feasible or too risky** using either:
+  - A **rule-based model**, or
+  - A trained **neural network feasibility model** (via a saved scikit-learn pipeline loaded with `joblib`).
+- Persists users, settings, and mission history in **SQLite**.
+- Provides a single-page **dashboard UI** with maps, mission history, and basic analytics.
 
-&ensp;&ensp;&ensp;&ensp; 
-Through machine learning analysis, Mayday will reduce the likelihood of 
-mission failure and increase the scalability of drone delivery for different
-services, such as healthcare, military, e-commerce, and more
+> Note: This is a prototype / academic project. All drone states in the "Drones" page are simulated; no real drones are controlled.
+
+## Tech Stack
+
+- **Backend**
+  - Python, Flask
+  - Flask-CORS
+  - SQLite (via `sqlite3`)
+  - JWT auth (`PyJWT`) + password hashing (`bcrypt`)
+  - External APIs:
+    - OpenStreetMap Overpass (obstacles)
+    - OpenWeatherMap (weather)
+  - `joblib` to load a pre-trained feasibility model (`feasibility_nn_model.pkl`)
+
+- **Frontend**
+  - Static `index.html` (no framework)
+  - Vanilla JavaScript
+  - Leaflet.js (maps)
+  - Chart.js (simple mission analytics)
+
+## Features
+
+- **Authentication**
+  - Sign up / login with email + password
+  - Passwords stored as bcrypt hashes in SQLite
+  - JWT-based stateless authentication on the API
+
+- **Mission simulation**
+  - Choose preset locations or geocode free-text addresses
+  - Visualize routes on a Leaflet map
+  - Automatic or manual wind inputs
+  - Mission feasibility evaluation using:
+    - Rule-based model **or**
+    - Neural network model (configurable in Settings)
+  - Additional safety settings:
+    - Treat low battery as riskier (aggressive model)
+    - Block missions with strong headwind
+
+- **Persistence & history**
+  - Missions are saved per user in SQLite
+  - History and basic success/fail analytics in the UI
+
+- **Resilience & logging**
+  - Retry + error handling for external APIs (Overpass, OpenWeatherMap, Nominatim)
+  - Clear frontend messages if APIs fail and the app falls back to a direct path
+  - Console logging of path deviation, API timing, and a simple test overview
 
 ## Getting Started
 
-#### [Instructions]
-```
-code 
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/arturof033/Mayday.git
+cd Mayday
 ```
 
-## Dependencies
-None
+### 2. Create and activate a virtual environment (recommended)
 
-#### Note:
-This program was made using Python.
+```bash
+python3 -m venv venv
+source venv/bin/activate   # macOS / Linux
 
-## Executing program
-
-#### 1. [Directions]
+# on Windows:
+# python -m venv venv
+# venv\Scripts\activate
 ```
-code
+
+### 3. Install backend dependencies
+
+```bash
+pip install -r requirements.txt
 ```
+
+This installs:
+- `flask`, `flask-cors`
+- `numpy`, `requests`
+- `bcrypt`, `PyJWT`
+- `joblib` (for loading the pre-trained feasibility model)
+
+> You do **not** need scikit-learn to run the app.
+> It is only needed if you want to retrain the model using `trainmodel.py`.
+
+### 4. (Optional) Train or retrain the feasibility model
+
+If you want to regenerate `feasibility_nn_model.pkl`:
+
+```bash
+python3 trainmodel.py
+```
+
+This uses scikit-learn (you must have it installed separately) to train a small neural network
+on synthetic data and save it as `feasibility_nn_model.pkl`.  
+If the model file is missing or fails to load, the app automatically falls back to the rule-based feasibility model.
+
+### 5. Run the Flask API
+
+```bash
+python3 app.py
+```
+
+By default this starts Flask in debug mode on:
+
+- Backend API: `http://127.0.0.1:5000/api`
+
+### 6. Open the frontend
+
+The frontend is a single `index.html` file. The simplest options are:
+
+1. **Open directly in your browser**  
+   - Open `index.html` in your browser and ensure the backend is running at `http://127.0.0.1:5000`.
+
+2. **Serve via a simple static server** (recommended to avoid CORS quirks)
+   - For example, using Python:
+     ```bash
+     python3 -m http.server 5500
+     ```
+   - Then open `http://127.0.0.1:5500/index.html` in your browser.
+
+Log in with:
+- The default demo user created on first run:
+  - Email: `demo@mayday.com`
+  - Password: `demo123`
+- Or create a new account via the signup form.
 
 ## Folder Structure
 
-The project folder structure is organized as follows:
+High-level structure:
 
-```
-Mayday
-├── file_or_folder/           # Description
-│   ├── file/                 # Description
-
-
+```text
+Mayday/
+├── app.py                 # Flask backend, APIs, pathfinding, feasibility logic
+├── index.html             # Single-page frontend (login + console UI)
+├── MayDay.css             # (If present) legacy styling (modern UI is inline in index.html)
+├── MayDay.js              # Legacy JS (current SPA logic lives in index.html)
+├── assets/
+│   └── mayday_drone.html  # Additional static asset
+├── requirements.txt       # Python dependencies
+├── mayday.db              # SQLite database (created at runtime)
+├── feasibility_nn_model.pkl  # Saved feasibility model (created by trainmodel.py)
+├── trainmodel.py          # Script to train & save the neural network feasibility model
+├── test_overview.txt      # Generated test checklist (written on app startup)
+└── README.md
 ```
 
 ## Authors
@@ -107,9 +207,3 @@ Emily Vu, <br>
   <img src="https://contrib.rocks/image?repo=arturof033/Mayday" />
 </a>
 
-<!-- MARKDOWN LINKS & IMAGES -->
-
-[contributors-shield]: https://img.shields.io/github/contributors/arturof033/Maday.svg?style=for-the-badge
-[contributors-url]: https://github.com/arturof033/Maday/contributors
-[issues-shield]: https://img.shields.io/github/issues/arturof033/Maday.svg?style=for-the-badge
-[issues-url]: https://github.com/arturof033/Maday/issues

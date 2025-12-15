@@ -1006,37 +1006,37 @@
           <ul class="nav-list">
             <li class="nav-item">
               <button data-page="dashboard" class="active">
-                <span class="icon">🏠</span>
+                <span class="icon">DB</span>
                 Dashboard
               </button>
             </li>
             <li class="nav-item">
               <button data-page="drones">
-                <span class="icon">🚁</span>
+                <span class="icon">DR</span>
                 Drones
               </button>
             </li>
             <li class="nav-item">
               <button data-page="missions">
-                <span class="icon">📋</span>
+                <span class="icon">MI</span>
                 Missions
               </button>
             </li>
             <li class="nav-item">
               <button data-page="analytics">
-                <span class="icon">📈</span>
+                <span class="icon">AN</span>
                 Analytics
               </button>
             </li>
             <li class="nav-item">
               <button data-page="profile">
-                <span class="icon">👤</span>
+                <span class="icon">PR</span>
                 Profile
               </button>
             </li>
             <li class="nav-item">
               <button data-page="settings">
-                <span class="icon">⚙️</span>
+                <span class="icon">ST</span>
                 Settings
               </button>
             </li>
@@ -1045,8 +1045,7 @@
 
         <div class="sidebar-footer">
           <button class="logout-btn" id="logout-btn">
-            <span>⟲</span>
-            Log out
+            <span>Log out</span>
           </button>
         </div>
       </aside>
@@ -1075,6 +1074,9 @@
                 <div>
                   <h3>Check a mission</h3>
                   <p>Select a start and destination to check if the drone can make it safely.</p>
+                  <p id="feasibility-mode-indicator" style="font-size: 0.78rem; color: var(--muted); margin-top: 2px;">
+                    Using neural network feasibility model.
+                  </p>
                 </div>
                 <span class="card-tag">Overview</span>
               </div>
@@ -1345,6 +1347,8 @@
           <div class="card">
             <div class="card-header">
               <div>
+                <h3>Simulation settings</h3>
+                <p>Control how mission feasibility is evaluated.</p>
               </div>
             </div>
             <div style="margin-top: 4px;">
@@ -1358,6 +1362,22 @@
                 <input type="checkbox" id="setting-strict-wind" />
                 &nbsp;Block missions with strong headwind
               </label>
+            </div>
+            <div style="margin-top: 10px;">
+              <div style="font-size: 0.82rem; margin-bottom: 4px;">Feasibility evaluation</div>
+              <label style="font-size: 0.82rem; display: block; margin-bottom: 2px;">
+                <input type="radio" name="feasibility-mode" id="setting-feas-mode-rule" value="rule" />
+                &nbsp;Use rule-based feasibility (current heuristic)
+              </label>
+              <label style="font-size: 0.82rem; display: block;">
+                <input type="radio" name="feasibility-mode" id="setting-feas-mode-model" value="model" checked />
+                &nbsp;Use neural network feasibility model (scikit-learn)
+              </label>
+            </div>
+            <div style="margin-top: 10px;">
+              <button id="settings-save-btn" class="primary-btn" style="padding-inline: 16px;">
+                Save settings
+              </button>
             </div>
             <p class="note">
             </p>
@@ -1379,6 +1399,7 @@
       settings: {
         aggressiveBattery: false,
         strictWind: false,
+        feasibilityMode: "model",
       },
     };
 
@@ -1405,6 +1426,7 @@
       const userChip = document.getElementById("user-chip");
       const userAvatar = document.getElementById("user-avatar");
       const userName = document.getElementById("user-name");
+      const feasModeIndicator = document.getElementById("feasibility-mode-indicator");
 
       // Mission elements
       const missionForm = document.getElementById("mission-form");
@@ -1427,6 +1449,9 @@
       // Settings elements
       const settingAggressiveBattery = document.getElementById("setting-aggressive-battery");
       const settingStrictWind = document.getElementById("setting-strict-wind");
+      const settingFeasModeRule = document.getElementById("setting-feas-mode-rule");
+      const settingFeasModeModel = document.getElementById("setting-feas-mode-model");
+      const settingsSaveBtn = document.getElementById("settings-save-btn");
 
       // --- Initialization of map & chart will happen after login ---
 
@@ -1455,7 +1480,17 @@
           await loadSettings();
         } catch (err) {
           console.error(err);
-          alert("Could not contact backend. Is Flask running?");
+          const message = (err && err.message ? err.message.toLowerCase() : "");
+          
+          // if the token is missing or no longer valid, treat this as a session issue, not a backend outage
+          if (message.includes("no token provided") || message.includes("invalid or expired token") || message.includes("401")) {
+            AppState.token = null;
+            AppState.user = null;
+            localStorage.removeItem("maydayToken");
+            alert("your session is not valid anymore. please log in again.");
+          } else {
+            alert("could not contact backend. is flask running?");
+          }
           showLogin();
           return;
         }
@@ -1482,6 +1517,7 @@
         renderMissionsTable();
         initializeAnalyticsChart();
         updateAnalytics();
+        updateFeasibilityIndicator();
       }
 
       // ------------- API helpers -------------
@@ -1689,8 +1725,18 @@
             break;
           case "settings":
             pageTitle.textContent = "Settings";
-            pageSubtitle.textContent = "Simple local simulation rules.";
+            pageSubtitle.textContent = "Simulation rules and feasibility model configuration.";
             break;
+        }
+      }
+
+      function updateFeasibilityIndicator() {
+        if (!feasModeIndicator) return;
+        const mode = (AppState.settings.feasibilityMode || "model").toLowerCase();
+        if (mode === "model") {
+          feasModeIndicator.textContent = "Using neural network feasibility model.";
+        } else {
+          feasModeIndicator.textContent = "Using rule-based feasibility model.";
         }
       }
 
@@ -1783,36 +1829,52 @@
         }
 
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
-        
-        try {
-          const response = await fetch(url, {
-            headers: {
-              'User-Agent': 'Mayday-Drone-Pathfinding/1.0' // Required by Nominatim
+        const maxAttempts = 3;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            const response = await fetch(url, {
+              headers: {
+                'User-Agent': 'mayday-drone-pathfinding/1.0' // required by nominatim
+              }
+            });
+
+            if (!response.ok) {
+              lastError = new Error(`geocoding api returned status ${response.status}`);
+            } else {
+              const data = await response.json();
+              
+              if (!data || data.length === 0) {
+                // this is a real "not found", no need to retry further
+                throw new Error("address not found. please try a more specific address.");
+              }
+
+              const result = data[0];
+              return {
+                lat: parseFloat(result.lat),
+                lng: parseFloat(result.lon),
+                display_name: result.display_name
+              };
             }
-          });
-
-          if (!response.ok) {
-            throw new Error(`Geocoding API returned status ${response.status}`);
+          } catch (error) {
+            // if this is a clear "not found", bubble it up immediately
+            if (error.message && error.message.toLowerCase().includes("not found")) {
+              throw error;
+            }
+            lastError = error;
           }
 
-          const data = await response.json();
-          
-          if (!data || data.length === 0) {
-            throw new Error("Address not found. Please try a more specific address.");
+          // small backoff between retries, but do not block too long
+          if (attempt < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
           }
-
-          const result = data[0];
-          return {
-            lat: parseFloat(result.lat),
-            lng: parseFloat(result.lon),
-            display_name: result.display_name
-          };
-        } catch (error) {
-          if (error.message.includes("not found")) {
-            throw error;
-          }
-          throw new Error(`Failed to geocode address: ${error.message}`);
         }
+
+        const message = lastError && lastError.message
+          ? lastError.message
+          : "could not contact address lookup service.";
+        throw new Error(`failed to geocode address after multiple attempts: ${message}`);
       }
 
       function drawRoute(start, end, calculatedPath = null) {
@@ -1975,8 +2037,8 @@
             if (currentPathRequest === controller) {
               // check if API failed
               if (pathData.api_failed || pathData.error) {
-                const errorMsg = pathData.error || 'Failed to fetch obstacle data from API';
-                showMissionStatus(`⚠ ${errorMsg}. Using direct path (obstacles not avoided).`, false, false);
+                const errorMsg = pathData.error || 'failed to fetch obstacle data from api.';
+                showMissionStatus(`${errorMsg} using direct path (obstacles not avoided).`, false, false);
                 if (pathData.path) {
                   drawRoute(start, end, pathData.path);
                   distance = pathData.distance_km || haversine(start.lat, start.lng, end.lat, end.lng);
@@ -1988,7 +2050,7 @@
                 return;
               }
               
-              // update wind fields automatically from API response only if not in manual mode
+              // update wind fields automatically from api response only if not in manual mode
               const manualWindToggle = document.getElementById("manual-wind-toggle");
               if (!manualWindToggle.checked) {
                 const windSpeedInput = document.getElementById("wind-speed");
@@ -2009,12 +2071,16 @@
               const windSpeed = parseFloat(document.getElementById("wind-speed").value);
               const windDirection = document.getElementById("wind-direction").value;
               
+              if (pathData.weather_api_failed && pathData.weather_error) {
+                showMissionStatus(`${pathData.weather_error} using default wind values for this mission.`, false, false);
+              }
+              
               if (pathData.distance_km) {
                 distance = pathData.distance_km;
               }
               drawRoute(start, end, pathData.path);
               
-              const { success, reason } = evaluateMission(
+              const { success, reason } = await evaluateMissionServer(
                 distance,
                 payload,
                 battery,
@@ -2023,8 +2089,8 @@
               );
               
               const text = success
-                ? `✓ Mission feasible: ${distance.toFixed(1)} km route calculated. ${reason}`
-                : `✗ Mission not recommended: ${distance.toFixed(1)} km route calculated. ${reason}`;
+                ? `mission feasible: ${distance.toFixed(1)} km route calculated. ${reason}`
+                : `mission not recommended: ${distance.toFixed(1)} km route calculated. ${reason}`;
               showMissionStatus(text, success, false);
               
               try {
@@ -2054,22 +2120,24 @@
           .catch(async error => {
             if (error.name !== 'AbortError') {
               console.error("Pathfinding error:", error);
-              const errorMsg = error.message || 'Failed to calculate path';
-              showMissionStatus(`⚠ ${errorMsg}. Using direct path (obstacles not avoided).`, false, false);
+              const errorMsg = error.message || 'failed to calculate path.';
+              const fallbackMsg = `${errorMsg} api could not be reached, using direct path only (obstacles not avoided).`;
+              
               distance = haversine(start.lat, start.lng, end.lat, end.lng);
               drawRoute(start, end);
               
-              const { success, reason } = evaluateMission(
+              const { success, reason } = await evaluateMissionServer(
                 distance,
                 payload,
                 battery,
                 windSpeed,
                 windDirection
               );
-              const text = success
-                ? `✓ Mission feasible: ${distance.toFixed(1)} km (straight-line). ${reason}`
-                : `✗ Mission not recommended: ${distance.toFixed(1)} km (straight-line). ${reason}`;
-              showMissionStatus(text, success, false);
+              const resultText = success
+                ? `mission feasible: ${distance.toFixed(1)} km (straight-line). ${reason}`
+                : `mission not recommended: ${distance.toFixed(1)} km (straight-line). ${reason}`;
+              
+              showMissionStatus(`${fallbackMsg} ${resultText}`, success, false);
               
               try {
                 const result = await apiRequest("/missions", {
@@ -2156,6 +2224,43 @@
         }
 
         return { success, reason };
+      }
+
+      async function evaluateMissionServer(distanceKm, payloadKg, batteryPercent, windSpeed, windDirection) {
+        const mode = (AppState.settings.feasibilityMode || "model").toLowerCase();
+
+        if (mode === "model") {
+          try {
+            const res = await apiRequest("/feasibility", {
+              method: "POST",
+              body: JSON.stringify({
+                distance_km: distanceKm,
+                payload_kg: payloadKg,
+                battery_percent: batteryPercent,
+                wind_speed: windSpeed,
+                wind_direction: windDirection,
+              }),
+            });
+
+            if (res && typeof res.success === "boolean") {
+              return {
+                success: res.success,
+                reason: res.reason || "",
+                modeUsed: res.mode_used || "model",
+              };
+            }
+          } catch (err) {
+            console.error("feasibility model evaluation failed, falling back to rule:", err);
+            // fall through to rule-based evaluation
+          }
+        }
+
+        const ruleResult = evaluateMission(distanceKm, payloadKg, batteryPercent, windSpeed, windDirection);
+        return {
+          success: ruleResult.success,
+          reason: ruleResult.reason,
+          modeUsed: "rule",
+        };
       }
 
       // ------------- MISSIONS TABLE -------------
@@ -2327,8 +2432,17 @@
           const settings = await apiRequest("/settings", { method: "GET" });
           AppState.settings.aggressiveBattery = settings.aggressive_battery || false;
           AppState.settings.strictWind = settings.strict_wind || false;
+          AppState.settings.feasibilityMode = settings.feasibility_mode || "model";
           settingAggressiveBattery.checked = AppState.settings.aggressiveBattery;
           settingStrictWind.checked = AppState.settings.strictWind;
+          if (settingFeasModeRule && settingFeasModeModel) {
+            if ((AppState.settings.feasibilityMode || "model").toLowerCase() === "model") {
+              settingFeasModeModel.checked = true;
+            } else {
+              settingFeasModeRule.checked = true;
+            }
+          }
+          updateFeasibilityIndicator();
         } catch (err) {
           console.error("Could not load settings:", err);
         }
@@ -2341,9 +2455,11 @@
             method: "POST",
             body: JSON.stringify({
               aggressive_battery: AppState.settings.aggressiveBattery,
-              strict_wind: AppState.settings.strictWind
+              strict_wind: AppState.settings.strictWind,
+              feasibility_mode: AppState.settings.feasibilityMode
             }),
           });
+          updateFeasibilityIndicator();
         } catch (err) {
           console.error("Could not save settings:", err);
         }
@@ -2358,6 +2474,31 @@
         AppState.settings.strictWind = settingStrictWind.checked;
         await saveSettings();
       });
+      
+      if (settingFeasModeRule) {
+        settingFeasModeRule.addEventListener("change", async () => {
+          if (settingFeasModeRule.checked) {
+            AppState.settings.feasibilityMode = "rule";
+            await saveSettings();
+          }
+        });
+      }
+
+      if (settingFeasModeModel) {
+        settingFeasModeModel.addEventListener("change", async () => {
+          if (settingFeasModeModel.checked) {
+            AppState.settings.feasibilityMode = "model";
+            await saveSettings();
+          }
+        });
+      }
+      
+      if (settingsSaveBtn) {
+        settingsSaveBtn.addEventListener("click", async () => {
+          await saveSettings();
+          alert("settings saved.");
+        });
+      }
       
       // load settings when app loads
       loadSettings();
