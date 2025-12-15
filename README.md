@@ -105,22 +105,8 @@ This installs:
 - `bcrypt`, `PyJWT`
 - `joblib` (for loading the pre-trained feasibility model)
 
-> You do **not** need scikit-learn to run the app.
-> It is only needed if you want to retrain the model using `trainmodel.py`.
 
-### 4. (Optional) Train or retrain the feasibility model
-
-If you want to regenerate `feasibility_nn_model.pkl`:
-
-```bash
-python3 trainmodel.py
-```
-
-This uses scikit-learn (you must have it installed separately) to train a small neural network
-on synthetic data and save it as `feasibility_nn_model.pkl`.  
-If the model file is missing or fails to load, the app automatically falls back to the rule-based feasibility model.
-
-### 5. Run the Flask API
+### 4. Run the Flask API
 
 ```bash
 python3 app.py
@@ -130,7 +116,7 @@ By default this starts Flask in debug mode on:
 
 - Backend API: `http://127.0.0.1:5000/api`
 
-### 6. Open the frontend
+### 5. Open the frontend
 
 The frontend is a single `index.html` file. The simplest options are:
 
@@ -160,12 +146,9 @@ Mayday/
 ├── index.html             # Single-page frontend (login + console UI)
 ├── MayDay.css             # (If present) legacy styling (modern UI is inline in index.html)
 ├── MayDay.js              # Legacy JS (current SPA logic lives in index.html)
-├── assets/
-│   └── mayday_drone.html  # Additional static asset
 ├── requirements.txt       # Python dependencies
 ├── mayday.db              # SQLite database (created at runtime)
 ├── feasibility_nn_model.pkl  # Saved feasibility model (created by trainmodel.py)
-├── trainmodel.py          # Script to train & save the neural network feasibility model
 ├── test_overview.txt      # Generated test checklist (written on app startup)
 └── README.md
 ```
