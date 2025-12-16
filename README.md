@@ -142,14 +142,22 @@ High-level structure:
 
 ```text
 Mayday/
-├── app.py                 # Flask backend, APIs, pathfinding, feasibility logic
-├── index.html             # Single-page frontend (login + console UI)
-├── MayDay.css             # (If present) legacy styling (modern UI is inline in index.html)
-├── MayDay.js              # Legacy JS (current SPA logic lives in index.html)
-├── requirements.txt       # Python dependencies
-├── mayday.db              # SQLite database (created at runtime)
-├── feasibility_nn_model.pkl  # Saved feasibility model (created by trainmodel.py)
-├── test_overview.txt      # Generated test checklist (written on app startup)
+├── Modeling                                   # Code to create dataset and neural network
+    ├── compute_energy.m                       # Creates dataset using Montecarlo simulations
+    ├── cont_drone_simulation_data.csv         # Drone simulation dataset
+    ├── energy_nn_scaled.pth                   # Neural Network
+    ├── Model_Creation.ipynb                   # Lists potential and final model
+    ├── uav_data.m                             # Helper function generates energy used
+    ├── X_scaler.pkl                           # Scaler used to normalized data
+    ├── y_scaler.pkl                           # Scaler used to normalize data
+├── app.py                                     # Flask backend, APIs, pathfinding, feasibility logic
+├── index.html                                 # Single-page frontend (login + console UI)
+├── MayDay.css                                 # (If present) legacy styling (modern UI is inline in index.html)
+├── MayDay.js                                  # Legacy JS (current SPA logic lives in index.html)
+├── requirements.txt                           # Python dependencies
+├── mayday.db                                  # SQLite database (created at runtime)
+├── feasibility_nn_model.pkl                   # Saved feasibility model (created by trainmodel.py)
+├── test_overview.txt                          # Generated test checklist (written on app startup)
 └── README.md
 ```
 
